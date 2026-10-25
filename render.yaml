@@ -1,0 +1,32 @@
+# Render Blueprint — 이 저장소를 Render 에서 "New > Blueprint" 로 연결하면 아래 설정이 채워집니다.
+# (DB 는 이미 만들어 둔 Render PostgreSQL 의 External Database URL 을 DATABASE_URL 에 직접 넣습니다.)
+services:
+  - type: web
+    name: testory-backend
+    runtime: node
+    region: singapore # PostgreSQL 과 같은 지역으로 맞추세요
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run migration:run && npm run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SCHEMA
+        value: testory
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: GPT_API_KEY
+        sync: false
+      - key: GPT_MODEL
+        value: gpt-4o-mini
+      - key: DEMO_SEED_ENABLED
+        value: "true"
+      - key: DEMO_PASSWORD
+        sync: false
