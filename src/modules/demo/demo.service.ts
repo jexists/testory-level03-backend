@@ -69,8 +69,11 @@ export class DemoService {
         throw e;
       }
     } finally {
-      if (locked) await runner.query('SELECT pg_advisory_unlock($1)', [DEMO_LOCK_KEY]);
-      await runner.release();
+      // 연결이 끊긴 경우에도 원래 오류가 가려지지 않게 한다. (advisory lock 은 연결이 닫히면 함께 풀린다)
+      if (locked && !runner.isReleased) {
+        await runner.query('SELECT pg_advisory_unlock($1)', [DEMO_LOCK_KEY]).catch(() => undefined);
+      }
+      if (!runner.isReleased) await runner.release();
     }
   }
 
