@@ -6,6 +6,7 @@ export const MSG = {
   ALREADY_APPLIED: '이미 신청한 모집글이에요.',
   RECRUITMENT_CLOSED: '마감된 모집이에요.',
   STARTED_CANNOT_APPLY: '테스트가 이미 시작되어 신청할 수 없어요.',
+  STARTED_CANNOT_CLOSE: '테스트가 이미 시작되어 마감하거나 마감 해제할 수 없어요.',
   STARTED_CANNOT_CANCEL: '테스트가 이미 시작되어 취소할 수 없어요.',
   DEVICE_REQUIRED: '마이페이지에서 내 기기를 먼저 등록해 주세요.',
   DEVICE_PICK_MODEL: '모델 목록에서 골라 주세요.',

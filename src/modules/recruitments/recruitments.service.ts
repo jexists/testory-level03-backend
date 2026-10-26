@@ -17,6 +17,7 @@ import {
   computeStage,
   computeStatus,
   defaultFeedbackDueAt,
+  effectiveStartAt,
   STAGES,
   toPublicStage,
   validateDeviceConditions,
@@ -452,7 +453,11 @@ export class RecruitmentsService {
     return this.detail(id, true);
   }
 
+  /** 직접 마감·마감 해제는 테스트가 시작되기 전(모집 중·모집 마감)에만 할 수 있다 */
   async setClosed(id: number, isClosed: boolean, ip: string | null) {
+    const current = await this.ds.getRepository(Recruitment).findOne({ where: { id } });
+    if (!current || current.deletedAt) throw notFound('RECRUITMENT_NOT_FOUND', MSG.RECRUITMENT_NOT_FOUND);
+    if (Date.now() >= effectiveStartAt(current).getTime()) throw badRequest('STARTED_CANNOT_CLOSE', MSG.STARTED_CANNOT_CLOSE);
     const res = await this.ds
       .getRepository(Recruitment)
       .createQueryBuilder()

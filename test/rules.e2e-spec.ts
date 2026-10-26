@@ -519,6 +519,15 @@ describe('신청·취소 (R1~R6, R15)', () => {
     await admin.patch(`/admin/recruitments/${r.id}/reopen`);
     expect((await agent.post(`/recruitments/${r.id}/applications`)).status).toBe(201);
   });
+
+  it('테스트가 시작된 글은 직접 마감도 마감 해제도 할 수 없다', async () => {
+    const r = await createRecruitment();
+    await startTest(ctx, r.id);
+    const close = await admin.patch(`/admin/recruitments/${r.id}/close`);
+    expect(close.status).toBe(400);
+    expect(close.body.message).toBe('테스트가 이미 시작되어 마감하거나 마감 해제할 수 없어요.');
+    expect((await admin.patch(`/admin/recruitments/${r.id}/reopen`)).status).toBe(400);
+  });
 });
 
 describe('피드백 (R9)', () => {
