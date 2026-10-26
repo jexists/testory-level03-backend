@@ -5,12 +5,20 @@ import { badRequest, notFound } from '../../common/app-error';
 import { ApplicationStatus, DeviceScope, Os } from '../../common/enums';
 import { MSG } from '../../common/messages';
 import { Application } from '../applications/application.entity';
+import { AiAnalysis } from '../ai-analyses/ai-analysis.entity';
 import { Feedback } from '../feedbacks/feedback.entity';
 import { DeviceModel } from '../users/device-model.entity';
 import { RecruitmentBodyDto } from './dto/recruitment.dto';
 import { AdminRecruitmentListQueryDto, DeletedFilter, RecruitmentListQueryDto, StatusFilter } from './dto/query.dto';
 import { RecruitmentDevice } from './recruitment-device.entity';
-import { computeStatus, validateDeviceConditions, type KnownModel } from './recruitment-rules';
+import {
+  computeStage,
+  computeStatus,
+  defaultFeedbackDueAt,
+  toPublicStage,
+  validateDeviceConditions,
+  type KnownModel,
+} from './recruitment-rules';
 import { Recruitment } from './recruitment.entity';
 
 export interface DeviceConditionView {
@@ -21,6 +29,8 @@ export interface DeviceConditionView {
   modelName: string | null;
   label: string;
 }
+
+const toDate = (v: unknown): Date | null => (v == null ? null : new Date(v as string));
 
 const conditionLabel = (os: Os, scope: DeviceScope, modelName: string | null) =>
   scope === DeviceScope.ALL ? `${os === Os.ANDROID ? 'Android' : 'iOS'} 전체` : (modelName ?? '');
@@ -98,11 +108,18 @@ export class RecruitmentsService {
     return qb.subQuery().select('COUNT(*)').from(Feedback, 'f').where('f.recruitmentId = r.id').getQuery();
   }
 
+  /** 가장 최근 AI 분석 시각 (관리자 진행 단계 계산용) */
+  private latestAnalysisSubQuery(qb: SelectQueryBuilder<Recruitment>): string {
+    return qb.subQuery().select('MAX(an.createdAt)').from(AiAnalysis, 'an').where('an.recruitmentId = r.id').getQuery();
+  }
+
   private baseListQuery(q: RecruitmentListQueryDto, admin: boolean) {
     const qb = this.ds.getRepository(Recruitment).createQueryBuilder('r');
     const participants = this.participantsSubQuery(qb);
     const feedbacks = this.feedbackSubQuery(qb);
-    qb.addSelect(`(${participants})::int`, 'participants').addSelect(`(${feedbacks})::int`, 'feedback_count');
+    qb.addSelect(`(${participants})::int`, 'participants')
+      .addSelect(`(${feedbacks})::int`, 'feedback_count')
+      .addSelect(`(${this.latestAnalysisSubQuery(qb)})`, 'latest_analysis_at');
 
     if (q.os) {
       // 그 OS 조건이 있거나, 조건이 하나도 없는(모든 기기) 모집글
@@ -117,9 +134,9 @@ export class RecruitmentsService {
     }
     if (q.q?.trim()) qb.andWhere('r.title ILIKE :q', { q: `%${q.q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%` });
     if (q.status === StatusFilter.OPEN) {
-      qb.andWhere(`r.isClosed = false AND r.startAt > now() AND (${participants}) < r.capacity`);
+      qb.andWhere(`r.isClosed = false AND r.startAt > now() AND r.testStartedAt IS NULL AND (${participants}) < r.capacity`);
     } else if (q.status === StatusFilter.CLOSED) {
-      qb.andWhere(`(r.isClosed = true OR r.startAt <= now() OR (${participants}) >= r.capacity)`);
+      qb.andWhere(`(r.isClosed = true OR r.startAt <= now() OR r.testStartedAt IS NOT NULL OR (${participants}) >= r.capacity)`);
     }
 
     if (admin) {
@@ -141,9 +158,13 @@ export class RecruitmentsService {
       capacity: r.capacity,
       startAt: r.startAt,
       endAt: r.endAt,
+      feedbackDueAt: r.feedbackDueAt,
+      testStartedAt: r.testStartedAt,
       isClosed: r.isClosed,
       participants,
       ...computeStatus({ ...r, participants }),
+      // 테스터에게는 피드백 마감 뒤 단계를 하나로 묶어 보여 준다. 관리자 응답은 adminFields 가 덮어쓴다.
+      stage: toPublicStage(computeStage({ ...r, participants, latestAnalysisAt: null })),
       devices: conditions,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
@@ -165,7 +186,7 @@ export class RecruitmentsService {
     const conditions = await this.loadConditions(entities.map((e) => e.id));
     const items = entities.map((r, i) => ({
       ...this.toView(r, Number(raw[i].participants), Number(raw[i].feedback_count), conditions.get(r.id) ?? []),
-      ...(admin ? { deletedAt: r.deletedAt, createdIp: r.createdIp, updatedIp: r.updatedIp, deletedIp: r.deletedIp } : {}),
+      ...(admin ? this.adminFields(r, Number(raw[i].participants), toDate(raw[i].latest_analysis_at)) : {}),
     }));
     return { items, total, page, limit };
   }
@@ -175,7 +196,9 @@ export class RecruitmentsService {
     if (!admin) qb.andWhere('r.deletedAt IS NULL');
     const participants = this.participantsSubQuery(qb);
     const feedbacks = this.feedbackSubQuery(qb);
-    qb.addSelect(`(${participants})::int`, 'participants').addSelect(`(${feedbacks})::int`, 'feedback_count');
+    qb.addSelect(`(${participants})::int`, 'participants')
+      .addSelect(`(${feedbacks})::int`, 'feedback_count')
+      .addSelect(`(${this.latestAnalysisSubQuery(qb)})`, 'latest_analysis_at');
     const { entities, raw } = await qb.getRawAndEntities();
     const r = entities[0];
     if (!r) throw notFound('RECRUITMENT_NOT_FOUND', MSG.RECRUITMENT_NOT_FOUND);
@@ -187,8 +210,21 @@ export class RecruitmentsService {
       : null;
     return {
       ...this.toView(r, Number(raw[0].participants), admin ? Number(raw[0].feedback_count) : null, conditions.get(r.id) ?? []),
-      ...(admin ? { deletedAt: r.deletedAt, createdIp: r.createdIp, updatedIp: r.updatedIp, deletedIp: r.deletedIp } : {}),
+      ...(admin ? this.adminFields(r, Number(raw[0].participants), toDate(raw[0].latest_analysis_at)) : {}),
       ...(userId ? { myApplication: mine ? { id: mine.id, status: mine.status, appliedAt: mine.appliedAt } : null } : {}),
+    };
+  }
+
+  /** 관리자만 보는 값: 6단계 진행 단계, 분석 확인 시각, 기록용 IP */
+  private adminFields(r: Recruitment, participants: number, latestAnalysisAt: Date | null) {
+    return {
+      stage: computeStage({ ...r, participants, latestAnalysisAt }),
+      latestAnalysisAt,
+      analysisReviewedAt: r.analysisReviewedAt,
+      deletedAt: r.deletedAt,
+      createdIp: r.createdIp,
+      updatedIp: r.updatedIp,
+      deletedIp: r.deletedIp,
     };
   }
 
@@ -197,12 +233,16 @@ export class RecruitmentsService {
     return new Map(models.map((m) => [m.id, m]));
   }
 
-  private assertPeriod(dto: RecruitmentBodyDto) {
+  /** 기간 검사 후 피드백 마감일을 정한다. 비우면 종료일 + 3일 */
+  private resolvePeriod(dto: RecruitmentBodyDto): Date {
     if (!(dto.endAt.getTime() > dto.startAt.getTime())) throw badRequest('END_BEFORE_START', MSG.END_BEFORE_START);
+    const feedbackDueAt = dto.feedbackDueAt ?? defaultFeedbackDueAt(dto.endAt);
+    if (feedbackDueAt.getTime() < dto.endAt.getTime()) throw badRequest('FEEDBACK_DUE_BEFORE_END', MSG.FEEDBACK_DUE_BEFORE_END);
+    return feedbackDueAt;
   }
 
   async create(dto: RecruitmentBodyDto, adminId: number, ip: string | null) {
-    this.assertPeriod(dto);
+    const feedbackDueAt = this.resolvePeriod(dto);
     const id = await this.ds.transaction(async (m) => {
       validateDeviceConditions(dto.devices, await this.loadModels(m));
       const saved = await m.getRepository(Recruitment).save(
@@ -213,6 +253,7 @@ export class RecruitmentsService {
           capacity: dto.capacity ?? 15,
           startAt: dto.startAt,
           endAt: dto.endAt,
+          feedbackDueAt,
           isClosed: false,
           createdBy: adminId,
           createdIp: ip,
@@ -228,7 +269,7 @@ export class RecruitmentsService {
   }
 
   async update(id: number, dto: RecruitmentBodyDto, ip: string | null) {
-    this.assertPeriod(dto);
+    const feedbackDueAt = this.resolvePeriod(dto);
     await this.ds.transaction(async (m) => {
       const r = await this.lockActiveOrThrow(m, id);
       const capacity = dto.capacity ?? r.capacity;
@@ -242,6 +283,9 @@ export class RecruitmentsService {
       const keep = new Set(existing.map((d) => d.deviceModelId).filter((v): v is number => v != null));
       validateDeviceConditions(dto.devices, await this.loadModels(m), keep);
 
+      // 정원을 참여자 수만큼 줄여 꽉 찼다면, 신청할 때와 같이 테스트를 바로 시작한다.
+      const now = new Date();
+      const fillsNow = !r.testStartedAt && participants > 0 && capacity <= participants && now < dto.startAt;
       await m.getRepository(Recruitment).update(
         { id },
         {
@@ -251,6 +295,8 @@ export class RecruitmentsService {
           capacity,
           startAt: dto.startAt,
           endAt: dto.endAt,
+          feedbackDueAt,
+          ...(fillsNow ? { testStartedAt: now } : {}),
           updatedIp: ip,
         },
       );

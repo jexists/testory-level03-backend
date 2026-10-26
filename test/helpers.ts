@@ -11,6 +11,7 @@ import { configureApp } from '../src/app.setup';
 import { buildDataSourceOptions } from '../src/database/data-source';
 import { InitSchema1761400000000 } from '../src/database/migrations/1761400000000-InitSchema';
 import { DeviceOther1761500000000 } from '../src/database/migrations/1761500000000-DeviceOther';
+import { RecruitmentStage1761600000000 } from '../src/database/migrations/1761600000000-RecruitmentStage';
 
 export const PASSWORD = 'test-password-1234';
 const DAY = 86_400_000;
@@ -46,7 +47,7 @@ export async function createTestApp(configure?: (b: ReturnType<typeof Test.creat
 
   const migrator = new DataSource({
     ...buildDataSourceOptions({ DATABASE_URL: dbUrl, DATABASE_SCHEMA: schema }),
-    migrations: [InitSchema1761400000000, DeviceOther1761500000000],
+    migrations: [InitSchema1761400000000, DeviceOther1761500000000, RecruitmentStage1761600000000],
   });
   await migrator.initialize();
   await migrator.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
@@ -122,3 +123,19 @@ export const recruitmentBody = (over: Record<string, unknown> = {}) => ({
   devices: [{ os: 'ANDROID', scope: 'ALL' }],
   ...over,
 });
+
+/** 테스트를 시작된 상태로 바꾼다. 피드백은 테스트 중에만 쓸 수 있다. */
+export async function startTest(ctx: TestCtx, recruitmentId: number) {
+  await ctx.ds.query(
+    `UPDATE "${ctx.schema}"."recruitments" SET start_at = now() - interval '1 hour', end_at = now() + interval '5 days', feedback_due_at = now() + interval '8 days' WHERE id = $1`,
+    [recruitmentId],
+  );
+}
+
+/** 피드백 마감일까지 지난 상태로 바꾼다. */
+export async function endFeedback(ctx: TestCtx, recruitmentId: number) {
+  await ctx.ds.query(
+    `UPDATE "${ctx.schema}"."recruitments" SET start_at = now() - interval '10 days', end_at = now() - interval '5 days', feedback_due_at = now() - interval '1 hour' WHERE id = $1`,
+    [recruitmentId],
+  );
+}

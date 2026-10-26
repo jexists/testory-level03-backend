@@ -85,6 +85,13 @@ export interface StatusInput {
   participants: number;
   startAt: Date;
   endAt: Date;
+  /** 정원이 차서 시작일보다 일찍 테스트가 시작된 시각 */
+  testStartedAt?: Date | null;
+}
+
+/** 테스트가 실제로 시작되는 시각: 시작일(모집 마감일)과 정원이 찬 시각 중 빠른 쪽 */
+export function effectiveStartAt(r: { startAt: Date; testStartedAt?: Date | null }): Date {
+  return r.testStartedAt && r.testStartedAt.getTime() < r.startAt.getTime() ? r.testStartedAt : r.startAt;
 }
 
 /**
@@ -92,7 +99,7 @@ export interface StatusInput {
  * 관리자가 마감했거나 정원이 찼거나 테스트가 시작되었으면 "마감", 아니면 "모집 중".
  */
 export function computeStatus(r: StatusInput, now: Date = new Date()) {
-  const started = now.getTime() >= r.startAt.getTime();
+  const started = now.getTime() >= effectiveStartAt(r).getTime();
   const full = r.participants >= r.capacity;
   const closedReason: ClosedReason = r.isClosed ? 'MANUAL' : full ? 'FULL' : started ? 'STARTED' : null;
   const phase: RecruitmentPhase = now.getTime() >= r.endAt.getTime() ? 'ENDED' : started ? 'ONGOING' : 'UPCOMING';
@@ -103,3 +110,46 @@ export function computeStatus(r: StatusInput, now: Date = new Date()) {
     remaining: Math.max(r.capacity - r.participants, 0),
   };
 }
+
+/** 관리자가 보는 진행 단계 */
+export type Stage = 'RECRUITING' | 'RECRUIT_CLOSED' | 'TESTING' | 'FEEDBACK_DONE' | 'ANALYZED' | 'DONE';
+/** 테스터가 보는 진행 단계. 피드백 마감 뒤의 단계는 하나로 묶는다. */
+export type PublicStage = 'RECRUITING' | 'RECRUIT_CLOSED' | 'TESTING' | 'FEEDBACK_CLOSED';
+export const STAGES: Stage[] = ['RECRUITING', 'RECRUIT_CLOSED', 'TESTING', 'FEEDBACK_DONE', 'ANALYZED', 'DONE'];
+
+export interface StageInput extends StatusInput {
+  feedbackDueAt: Date;
+  /** 가장 최근 AI 분석 시각. 분석이 없으면 null */
+  latestAnalysisAt: Date | null;
+  analysisReviewedAt: Date | null;
+}
+
+/**
+ * 모집 중 → 모집 마감 → 테스트 중 → 피드백 완료 → 분석 완료 → 종료.
+ * 피드백 마감 전에 돌린 분석은 단계를 바꾸지 않는다.
+ * 확인 완료 뒤 분석을 다시 돌리면 "분석 완료"로 돌아간다.
+ */
+export function computeStage(r: StageInput, now: Date = new Date()): Stage {
+  if (now.getTime() >= r.feedbackDueAt.getTime()) {
+    if (!r.latestAnalysisAt) return 'FEEDBACK_DONE';
+    const reviewed = r.analysisReviewedAt && r.analysisReviewedAt.getTime() >= r.latestAnalysisAt.getTime();
+    return reviewed ? 'DONE' : 'ANALYZED';
+  }
+  if (now.getTime() >= effectiveStartAt(r).getTime()) return 'TESTING';
+  return computeStatus(r, now).status === 'CLOSED' ? 'RECRUIT_CLOSED' : 'RECRUITING';
+}
+
+export function toPublicStage(stage: Stage): PublicStage {
+  return stage === 'FEEDBACK_DONE' || stage === 'ANALYZED' || stage === 'DONE' ? 'FEEDBACK_CLOSED' : stage;
+}
+
+/** 피드백은 테스트가 시작된 뒤부터 피드백 마감일 전까지만 쓸 수 있다. */
+export function feedbackWindow(r: { startAt: Date; testStartedAt?: Date | null; feedbackDueAt: Date }, now: Date = new Date()) {
+  if (now.getTime() < effectiveStartAt(r).getTime()) return 'NOT_STARTED' as const;
+  if (now.getTime() >= r.feedbackDueAt.getTime()) return 'CLOSED' as const;
+  return 'OPEN' as const;
+}
+
+/** 피드백 마감일 기본값: 종료일 + 3일 */
+export const FEEDBACK_GRACE_DAYS = 3;
+export const defaultFeedbackDueAt = (endAt: Date) => new Date(endAt.getTime() + FEEDBACK_GRACE_DAYS * 86_400_000);

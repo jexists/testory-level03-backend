@@ -6,7 +6,14 @@ import { ApplicationStatus } from '../../common/enums';
 import { MSG } from '../../common/messages';
 import { Application } from './application.entity';
 import { RecruitmentDevice } from '../recruitments/recruitment-device.entity';
-import { deviceMatches, describeAllowed, type StoredCondition } from '../recruitments/recruitment-rules';
+import {
+  computeStage,
+  deviceMatches,
+  describeAllowed,
+  effectiveStartAt,
+  toPublicStage,
+  type StoredCondition,
+} from '../recruitments/recruitment-rules';
 import { RecruitmentsService } from '../recruitments/recruitments.service';
 import { User } from '../users/user.entity';
 import { Recruitment } from '../recruitments/recruitment.entity';
@@ -31,7 +38,7 @@ export class ApplicationsService {
       return await this.ds.transaction(async (m) => {
         const r = await this.recruitments.lockActiveOrThrow(m, recruitmentId);
         const now = new Date();
-        if (now.getTime() >= r.startAt.getTime()) throw badRequest('RECRUITMENT_STARTED', MSG.STARTED_CANNOT_APPLY);
+        if (now.getTime() >= effectiveStartAt(r).getTime()) throw badRequest('RECRUITMENT_STARTED', MSG.STARTED_CANNOT_APPLY);
         if (r.isClosed) throw conflict('RECRUITMENT_CLOSED', MSG.RECRUITMENT_CLOSED);
 
         const repo = m.getRepository(Application);
@@ -60,7 +67,8 @@ export class ApplicationsService {
         }
 
         // R1: 정원을 넘겨 신청할 수 없다.
-        if ((await this.recruitments.countParticipants(m, recruitmentId)) >= r.capacity) {
+        const participants = await this.recruitments.countParticipants(m, recruitmentId);
+        if (participants >= r.capacity) {
           throw conflict('CAPACITY_FULL', MSG.CAPACITY_FULL);
         }
 
@@ -74,6 +82,11 @@ export class ApplicationsService {
             cancelledAt: null,
           }),
         );
+        // 이 신청으로 정원이 다 찼다면 모집을 마감하고 테스트를 바로 시작한다.
+        if (participants + 1 >= r.capacity) {
+          r.testStartedAt = now;
+          await m.getRepository(Recruitment).update({ id: recruitmentId }, { testStartedAt: now });
+        }
         return this.toMine(saved, r);
       });
     } catch (e) {
@@ -96,7 +109,8 @@ export class ApplicationsService {
       if (fresh.status === ApplicationStatus.CANCELLED) {
         throw new AppError(HttpStatus.CONFLICT, 'ALREADY_CANCELLED', '이미 취소된 신청이에요.');
       }
-      if (new Date().getTime() >= r.startAt.getTime()) throw badRequest('RECRUITMENT_STARTED', MSG.STARTED_CANNOT_CANCEL);
+      // 정원이 차서 테스트가 일찍 시작되었다면 취소할 수 없다.
+      if (new Date().getTime() >= effectiveStartAt(r).getTime()) throw badRequest('RECRUITMENT_STARTED', MSG.STARTED_CANNOT_CANCEL);
       fresh.status = ApplicationStatus.CANCELLED;
       fresh.cancelledAt = new Date();
       await m.getRepository(Application).save(fresh);
@@ -112,8 +126,16 @@ export class ApplicationsService {
       deviceModel: a.deviceModel,
       appliedAt: a.appliedAt,
       cancelledAt: a.cancelledAt,
-      canCancel: a.status === ApplicationStatus.APPLIED && Date.now() < r.startAt.getTime(),
-      recruitment: { id: r.id, title: r.title, startAt: r.startAt, endAt: r.endAt },
+      canCancel: a.status === ApplicationStatus.APPLIED && Date.now() < effectiveStartAt(r).getTime(),
+      recruitment: {
+        id: r.id,
+        title: r.title,
+        startAt: r.startAt,
+        endAt: r.endAt,
+        feedbackDueAt: r.feedbackDueAt,
+        // 정원이 차면 testStartedAt 이 채워지므로 참여자 수 없이도 테스터용 단계는 정해진다.
+        stage: toPublicStage(computeStage({ ...r, participants: 0, latestAnalysisAt: null })),
+      },
     };
   }
 

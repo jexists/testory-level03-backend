@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { DeviceScope, Os } from '../../common/enums';
 import {
+  computeStage,
   computeStatus,
+  effectiveStartAt,
+  feedbackWindow,
+  toPublicStage,
   describeAllowed,
   deviceMatches,
   validateDeviceConditions,
@@ -134,5 +138,66 @@ describe('computeStatus (R2/R4)', () => {
     const started = { ...base, startAt: new Date(+now - day) };
     expect(computeStatus(started, now)).toMatchObject({ status: 'CLOSED', closedReason: 'STARTED', phase: 'ONGOING' });
     expect(computeStatus({ ...started, endAt: new Date(+now - 1000) }, now).phase).toBe('ENDED');
+  });
+});
+
+describe('진행 단계 computeStage', () => {
+  const now = new Date('2026-10-25T00:00:00Z');
+  const day = 86_400_000;
+  const at = (d: number) => new Date(+now + d * day);
+  const base = {
+    isClosed: false,
+    capacity: 3,
+    participants: 1,
+    startAt: at(2),
+    endAt: at(5),
+    feedbackDueAt: at(8),
+    testStartedAt: null,
+    latestAnalysisAt: null,
+    analysisReviewedAt: null,
+  };
+
+  it('시작 전 자리가 있으면 모집 중, 관리자가 마감하면 모집 마감', () => {
+    expect(computeStage(base, now)).toBe('RECRUITING');
+    expect(computeStage({ ...base, isClosed: true }, now)).toBe('RECRUIT_CLOSED');
+  });
+
+  it('정원이 차서 일찍 시작했으면 시작일 전이라도 테스트 중', () => {
+    const filled = { ...base, participants: 3, testStartedAt: at(-1) };
+    expect(effectiveStartAt(filled)).toEqual(at(-1));
+    expect(computeStage(filled, now)).toBe('TESTING');
+    expect(computeStatus(filled, now)).toMatchObject({ status: 'CLOSED', phase: 'ONGOING' });
+  });
+
+  it('시작일이 지나면 테스트 중, 피드백 마감 전 분석은 단계를 바꾸지 않는다', () => {
+    expect(computeStage({ ...base, startAt: at(-1) }, now)).toBe('TESTING');
+    expect(computeStage({ ...base, startAt: at(-1), latestAnalysisAt: at(-0.5) }, now)).toBe('TESTING');
+  });
+
+  it('피드백 마감 뒤: 분석 없음 → 피드백 완료, 분석 있음 → 분석 완료, 확인 → 종료', () => {
+    const past = { ...base, startAt: at(-10), endAt: at(-5), feedbackDueAt: at(-2) };
+    expect(computeStage(past, now)).toBe('FEEDBACK_DONE');
+    expect(computeStage({ ...past, latestAnalysisAt: at(-1) }, now)).toBe('ANALYZED');
+    expect(computeStage({ ...past, latestAnalysisAt: at(-1), analysisReviewedAt: at(-0.5) }, now)).toBe('DONE');
+  });
+
+  it('확인 뒤 분석을 다시 돌리면 분석 완료로 돌아간다', () => {
+    const past = { ...base, startAt: at(-10), endAt: at(-5), feedbackDueAt: at(-2) };
+    expect(computeStage({ ...past, analysisReviewedAt: at(-1), latestAnalysisAt: at(-0.5) }, now)).toBe('ANALYZED');
+  });
+
+  it('테스터에게는 피드백 마감 뒤 단계를 하나로 묶어 보여 준다', () => {
+    expect(toPublicStage('TESTING')).toBe('TESTING');
+    expect(['FEEDBACK_DONE', 'ANALYZED', 'DONE'].map((s) => toPublicStage(s as 'DONE'))).toEqual([
+      'FEEDBACK_CLOSED',
+      'FEEDBACK_CLOSED',
+      'FEEDBACK_CLOSED',
+    ]);
+  });
+
+  it('피드백은 테스트 시작 뒤 ~ 피드백 마감 전에만 쓸 수 있다', () => {
+    expect(feedbackWindow(base, now)).toBe('NOT_STARTED');
+    expect(feedbackWindow({ ...base, testStartedAt: at(-1) }, now)).toBe('OPEN');
+    expect(feedbackWindow({ ...base, startAt: at(-10), feedbackDueAt: at(-1) }, now)).toBe('CLOSED');
   });
 });

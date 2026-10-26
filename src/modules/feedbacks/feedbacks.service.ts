@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { forbidden } from '../../common/app-error';
+import { badRequest, forbidden } from '../../common/app-error';
 import { ApplicationStatus } from '../../common/enums';
 import { MSG } from '../../common/messages';
 import { Application } from '../applications/application.entity';
+import { feedbackWindow } from '../recruitments/recruitment-rules';
 import { Recruitment } from '../recruitments/recruitment.entity';
 import { RecruitmentsService } from '../recruitments/recruitments.service';
 import { User } from '../users/user.entity';
@@ -19,13 +20,19 @@ export class FeedbacksService {
     private readonly recruitments: RecruitmentsService,
   ) {}
 
-  /** R9: 삭제되지 않은 모집글에서 "참여 중"인 사람만 쓸 수 있다. 유형은 반드시 골라야 한다. */
+  /**
+   * R9: 삭제되지 않은 모집글에서 "참여 중"인 사람만 쓸 수 있다. 유형은 반드시 골라야 한다.
+   * 테스트가 시작된 뒤부터 피드백 마감일 전까지만 받는다.
+   */
   async create(recruitmentId: number, user: User, dto: CreateFeedbackDto) {
-    await this.recruitments.getActiveOrThrow(recruitmentId); // R11: 삭제된 글은 받지 않는다
+    const r = await this.recruitments.getActiveOrThrow(recruitmentId); // R11: 삭제된 글은 받지 않는다
     const joined = await this.ds
       .getRepository(Application)
       .existsBy({ recruitmentId, userId: user.id, status: ApplicationStatus.APPLIED });
     if (!joined) throw forbidden('NOT_PARTICIPANT', MSG.FEEDBACK_NOT_PARTICIPANT);
+    const window = feedbackWindow(r);
+    if (window === 'NOT_STARTED') throw badRequest('FEEDBACK_NOT_STARTED', MSG.FEEDBACK_NOT_STARTED);
+    if (window === 'CLOSED') throw badRequest('FEEDBACK_CLOSED', MSG.FEEDBACK_CLOSED);
 
     const repo = this.ds.getRepository(Feedback);
     const saved = await repo.save(

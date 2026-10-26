@@ -25,6 +25,18 @@ export class Recruitment {
   @Column({ name: 'end_at', type: 'timestamptz' })
   endAt: Date;
 
+  /** 이 시각 전까지만 피드백을 쓸 수 있다. 기본값은 종료일 + 3일 */
+  @Column({ name: 'feedback_due_at', type: 'timestamptz' })
+  feedbackDueAt: Date;
+
+  /** 정원이 차서 테스트가 일찍 시작된 시각. 시작일에 시작했다면 비어 있다. */
+  @Column({ name: 'test_started_at', type: 'timestamptz', nullable: true })
+  testStartedAt: Date | null;
+
+  /** 관리자가 AI 분석 결과를 "확인 완료"한 시각 */
+  @Column({ name: 'analysis_reviewed_at', type: 'timestamptz', nullable: true })
+  analysisReviewedAt: Date | null;
+
   @Column({ name: 'is_closed', type: 'boolean', default: false })
   isClosed: boolean;
 

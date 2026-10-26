@@ -63,6 +63,12 @@ export class RecruitmentBodyDto {
   @IsDate({ message: '종료일을 입력해 주세요.' })
   endAt: Date;
 
+  /** 비우면 종료일 + 3일 */
+  @IsOptional()
+  @Type(() => Date)
+  @IsDate({ message: '피드백 마감일을 다시 확인해 주세요.' })
+  feedbackDueAt?: Date;
+
   /** 빈 배열이면 모든 기기를 받는다. */
   @IsArray({ message: MSG.DEVICE_CONDITION_MIN })
   @ValidateNested({ each: true })
