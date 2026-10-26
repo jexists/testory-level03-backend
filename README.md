@@ -1,188 +1,232 @@
-# Testory Backend (테스토리 백엔드)
+<div align="center">
 
-베타테스터 모집·피드백 관리 서비스 **Testory** 의 API 서버입니다. 모집글 하나에 신청과 피드백을 모으고, 정원·기기 조건·취소 같은 **핵심 규칙은 모두 이 서버가 최종적으로 검사**합니다. (화면에서 막아 둔 규칙도 API 를 직접 호출해 우회할 수 없습니다.)
+# Testory · Backend
 
-- 기획서: [`기획서.md`](./기획서.md) (프론트엔드 저장소의 `기획서.md` 와 같은 내용)
-- 프론트엔드 저장소: `testory-level01-frontend` (이 저장소와 독립)
-- 배포 주소: <https://testory-level01-backend.onrender.com> · Health: <https://testory-level01-backend.onrender.com/health> · API 문서: <https://testory-level01-backend.onrender.com/api/docs>
-- 프론트엔드 배포 주소: <https://testory-level01-frontend.vercel.app>
-- 로컬 주소: <http://localhost:4000> · API 문서(Swagger): <http://localhost:4000/api/docs> · Health: <http://localhost:4000/health>
+**앱 베타테스터 모집 · 신청 · 피드백 관리 서비스의 API 서버**
 
-> ⏱ 무료 서버 환경에서는 일정 시간 동안 요청이 없으면 서버가 일시 중지될 수 있어 첫 접속 시 응답이 느릴 수 있습니다. (Render 무료 웹 서비스는 15분 동안 요청이 없으면 잠들고, 다시 깨어나는 데 약 1분 걸립니다.)
+<a href="https://testory-level01-frontend.vercel.app"><img src="https://img.shields.io/badge/배포_앱_열기-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="배포 앱 열기"></a>
+<a href="https://testory-level01-backend.onrender.com/api/docs"><img src="https://img.shields.io/badge/API_문서-85EA2D?style=for-the-badge&logo=swagger&logoColor=black" alt="API 문서"></a>
+<a href="./기획서.md"><img src="https://img.shields.io/badge/기획서-2F5BEA?style=for-the-badge&logo=markdown&logoColor=white" alt="기획서"></a>
+
+![NestJS](https://img.shields.io/badge/NestJS_12-E0234E?style=flat-square&logo=nestjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript_6-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat-square)
+![Render](https://img.shields.io/badge/Render-46E3B7?style=flat-square&logo=render&logoColor=black)
+
+</div>
+
+---
+
+## 🔗 바로가기
+
+| 구분 | GitHub 저장소 | 배포 주소 |
+|---|---|---|
+| **프론트엔드** | [jexists/testory-level01-frontend](https://github.com/jexists/testory-level01-frontend) | <https://testory-level01-frontend.vercel.app> |
+| **백엔드** (이 저장소) | [jexists/testory-level01-backend](https://github.com/jexists/testory-level01-backend) | <https://testory-level01-backend.onrender.com> |
+
+| 확인용 주소 | 배포 | 로컬 |
+|---|---|---|
+| Health (DB 연결 확인) | [/health](https://testory-level01-backend.onrender.com/health) | <http://localhost:4000/health> |
+| API 문서 (Swagger) | [/api/docs](https://testory-level01-backend.onrender.com/api/docs) | <http://localhost:4000/api/docs> |
+
+- 확인용 계정: [프론트엔드 README](https://github.com/jexists/testory-level01-frontend#accounts)
+- 기획서: [`기획서.md`](./기획서.md) (프론트엔드 저장소와 동일)
+
+> ⏱ **무료 서버 안내** — Render 무료 웹 서비스는 15분 미사용 시 절전. 첫 접속 응답 최대 약 1분 소요, 고장 아님.
 >
-> ⚠️ Render **무료 PostgreSQL 은 만든 지 30일 뒤 만료**됩니다(14일 유예 후 삭제). 시연이 끝나기 전에 만료되지 않는지 확인하세요.
+> ⚠️ Render 무료 PostgreSQL = 생성 후 30일 만료 (14일 유예 후 삭제). 시연 전 만료일 확인.
 
-## 주요 기능
+---
+
+## ✨ 주요 기능
 
 | 구분 | 기능 |
 |---|---|
-| 인증 | 회원가입(내 기기 포함, 일반 사용자만), 로그인/로그아웃(httpOnly 쿠키 JWT) |
-| 내 정보 | 내 정보, **마이페이지에서만** 기기 수정, 기기 모델 선택 목록. 목록에 없는 OS·모델은 "기타"로 직접 입력 |
-| 모집글 | 목록(기기·상태 필터, 제목 검색), 상세, 관리자 등록·수정·**Soft Delete**·**복구**·마감/마감 해제, IP 자동 기록, 피드백 마감일, 기기 조건 없음 = 모든 기기 |
-| 진행 단계 | 모집 중 → 모집 마감 → 테스트 중 → 피드백 완료 → 분석 완료 → 종료 를 서버가 계산 (테스터에게는 뒤 세 단계를 "피드백 마감"으로 묶음) |
-| 신청 | 신청(신청 당시 기기 복사, **정원이 차면 바로 테스트 시작**), 본인 신청 취소, 내 신청 목록, 관리자용 신청자 조회(피드백 수·정렬). 테스터만 |
-| 피드백 | 유형(버그/개선/칭찬)을 골라 작성(**테스트 중 ~ 피드백 마감일**), 내 피드백, 관리자 피드백(필터·작성자별 정렬) |
-| AI 분석 | 모집글별 GPT 종합 분석(**요약 → 웹 참고자료 → 조치 판단** 3단계, 근거 피드백·원문 문장 대조, 열리는 링크만 남김) → **버전별 저장**, 이전 버전 조회, 실패 시 저장 안 함, **확인 완료** 표시, 진행 상황 스트리밍(SSE) |
-| 관리자 | 대시보드용 필터(모집 중·마감 임박·AI 분석 필요 등)와 필터별 개수, 시연 데이터 초기화 |
+| 인증 | 회원가입(내 기기 포함), 로그인·로그아웃 (httpOnly 쿠키 JWT) |
+| 내 정보 | 내 정보 조회, 기기 수정(마이페이지 전용), 기기 모델 목록, 목록 외 OS·모델 직접 입력 |
+| 모집글 | 목록(기기·상태 필터, 제목 검색), 상세, 등록·수정·Soft Delete·복구·마감·마감 해제, IP 기록 |
+| 진행 단계 | 모집 중 → 모집 마감 → 테스트 중 → 피드백 완료 → 분석 완료 → 종료, 서버 계산 |
+| 신청 | 신청(당시 기기 복사, 정원 충족 시 즉시 테스트 시작), 본인 취소, 내 신청, 신청자 조회(피드백 수 정렬) |
+| 피드백 | 유형(버그·개선·칭찬) 선택 작성, 테스트 시작 ~ 피드백 마감일 한정, 관리자 필터·정렬 |
+| AI 분석 | GPT 3단계 분석(요약 → 웹 참고자료 → 조치 판단), 근거 피드백 연결, 버전별 저장, 확인 완료, 진행 상황 SSE |
+| 관리자 | 대시보드 필터·개수, 시연 데이터 초기화 |
 
-## 기술 스택
+---
 
-NestJS 12 · TypeScript 6 · TypeORM 1.1 · PostgreSQL · zod(환경변수 검증) · class-validator(DTO) · JWT(@nestjs/jwt) · bcryptjs · helmet · @nestjs/throttler · @nestjs/swagger · OpenAI SDK · Vitest + supertest
+## 🛠 기술 스택
 
-**ORM 선택 이유(TypeORM)**: Nest 공식 연동(`@nestjs/typeorm`)이 있고 안정판이며, 정원·버전 번호처럼 **행 잠금(`SELECT … FOR UPDATE`)과 트랜잭션이 필요한 규칙**을 직접 쓰기 쉽습니다. Prisma 는 최신(8.x)이 아직 rc 라 제외했습니다.
+| 구분 | 기술 |
+|---|---|
+| Framework | ![NestJS](https://img.shields.io/badge/NestJS_12-E0234E?style=flat-square&logo=nestjs&logoColor=white) |
+| Language | ![TypeScript](https://img.shields.io/badge/TypeScript_6-3178C6?style=flat-square&logo=typescript&logoColor=white) |
+| Database | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![TypeORM](https://img.shields.io/badge/TypeORM_1.1-FE0803?style=flat-square&logo=typeorm&logoColor=white) |
+| Auth · Security | ![JWT](https://img.shields.io/badge/JWT-000000?style=flat-square&logo=jsonwebtokens&logoColor=white) ![bcrypt](https://img.shields.io/badge/bcryptjs-338033?style=flat-square) ![Helmet](https://img.shields.io/badge/Helmet-1F2937?style=flat-square) ![Throttler](https://img.shields.io/badge/Throttler-E0234E?style=flat-square&logo=nestjs&logoColor=white) |
+| Validation | ![class-validator](https://img.shields.io/badge/class--validator-5A67D8?style=flat-square) ![Zod](https://img.shields.io/badge/Zod_(환경변수)-3E67B1?style=flat-square&logo=zod&logoColor=white) |
+| API Docs | ![Swagger](https://img.shields.io/badge/Swagger-85EA2D?style=flat-square&logo=swagger&logoColor=black) |
+| AI | ![OpenAI](https://img.shields.io/badge/OpenAI_SDK-412991?style=flat-square) |
+| Test | ![Vitest](https://img.shields.io/badge/Vitest-6E9F18?style=flat-square&logo=vitest&logoColor=white) ![Supertest](https://img.shields.io/badge/Supertest-333333?style=flat-square) |
+| Deploy | ![Render](https://img.shields.io/badge/Render-46E3B7?style=flat-square&logo=render&logoColor=black) |
 
-## 폴더 구조
+---
 
-```
-src/
-  main.ts, app.module.ts, app.setup.ts   # 부팅, 모듈 조립, 공통 설정(CORS·helmet·검증·오류 형식)
-  config/                                # 환경변수 스키마(zod)와 ConfigModule
-  common/                                # 가드, 필터, 데코레이터, 열거형, 쉬운 안내 문구
-  database/                              # data-source, migrations/, migrate.ts, seed-cli.ts
-  modules/
-    auth/ users/ recruitments/ applications/ feedbacks/ ai-analyses/ dashboard/ demo/ health/
-test/                                    # API 통합(e2e) 테스트
-```
+## 🔐 인증 · 권한
 
-각 모듈은 `controller`(요청·응답) → `service`(규칙) → TypeORM(`DataSource`/`Repository`) 순서이며, 불필요한 Repository·Interface 계층은 두지 않았습니다.
+- 로그인 토큰: httpOnly 쿠키 `testory_token` (SameSite=Lax, 운영 Secure), `Authorization: Bearer` 도 허용
+- 요청마다 DB 에서 사용자·역할 재조회 (토큰·요청 본문의 역할 무시)
+- 역할 구분: `@Public()` 누구나 · `@Roles(ADMIN)` 관리자 · `@Roles(USER)` 테스터
+- 변경 요청(POST·PATCH·DELETE): `FRONTEND_URL` 외 Origin 거절
+- 로그인·가입: IP당 1분 10회 제한, 비밀번호 bcrypt 해시
 
-## 인증과 권한
+---
 
-- 로그인하면 서버가 **httpOnly 쿠키**(`testory_token`, SameSite=Lax, 운영에서는 Secure)로 JWT 를 내려줍니다. `Authorization: Bearer` 도 받습니다(Swagger·테스트용).
-- 전역 `AuthGuard` 가 **요청마다 DB 에서 사용자와 role 을 다시 읽습니다.** 토큰이나 요청 본문의 role·userId 는 믿지 않습니다.
-- `@Public()` 이 아닌 API 는 로그인이 필요하고, `@Roles(ADMIN)` 이면 관리자만, `@Roles(USER)` 이면 테스터만 호출할 수 있습니다. 신청·취소·피드백 작성·내 신청·내 피드백은 테스터 전용이고, 취소는 본인 신청만 가능합니다.
-- 변경 요청(POST/PATCH/DELETE)은 `Origin` 이 `FRONTEND_URL` 에 없으면 거절하고, 로그인·가입은 요청 횟수를 제한합니다.
-- 비밀번호는 bcrypt 로 해시해 저장합니다.
+## 📡 API
 
-## API 요약 (자세한 요청 형식은 Swagger)
+오류 응답 형식: `{ statusCode, code, message, details? }` — `message` 는 화면에 바로 보여 줄 한국어 안내
 
-| 구분 | 경로 | 누가 |
+<details>
+<summary><b>API 목록 펼치기</b> (요청 형식 상세는 Swagger)</summary>
+
+| 구분 | 경로 | 권한 |
 |---|---|---|
 | 확인 | `GET /health` | 누구나 |
-| 인증 | `POST /auth/signup`, `POST /auth/login`, `POST /auth/logout` | 누구나 |
+| 인증 | `POST /auth/signup` · `/auth/login` · `/auth/logout` | 누구나 |
 | 내 정보 | `GET /me`, `PATCH /me/device`, `GET /device-models?os=` | 로그인 / 본인 / 누구나 |
-| 모집글 | `GET /recruitments`(`os`,`status`,`q`,`page`,`limit`), `GET /recruitments/:id` | 누구나 |
-| 모집글 관리 | `GET·POST /admin/recruitments`(`deleted`=exclude·include·only, `stage`, `filter`, `os`, `status`, `q`, `page`, `limit`), `GET·PATCH·DELETE /admin/recruitments/:id`, `PATCH …/:id/close`, `PATCH …/:id/reopen`, `PATCH …/:id/restore` | 관리자 |
+| 모집글 | `GET /recruitments` (`os`, `status`, `q`, `page`, `limit`), `GET /recruitments/:id` | 누구나 |
+| 모집글 관리 | `GET·POST /admin/recruitments` (`deleted`, `stage`, `filter`, `os`, `status`, `q`), `GET·PATCH·DELETE /admin/recruitments/:id`, `PATCH …/:id/close` · `/reopen` · `/restore` | 관리자 |
 | 신청 | `POST /recruitments/:id/applications`, `DELETE /applications/:id`, `GET /me/applications` | 테스터 |
 | 신청자 | `GET /admin/recruitments/:id/applications?sort=feedback_desc` | 관리자 |
-| 피드백 | `POST /recruitments/:id/feedbacks`, `GET /me/feedbacks?recruitmentId=`, `GET /admin/feedbacks`(`recruitmentId`, `type`, `sort=author_count_desc`) | 참여 중 테스터 / 본인 / 관리자 |
-| AI 분석 | `POST·GET /admin/recruitments/:id/analyses`, `POST …/analyses/stream`(진행 상황 SSE), `GET …/analyses/latest｜:version`, `POST …/analyses/review`(확인 완료) | 관리자 |
-| 현황·시연 | `GET /admin/dashboard`(단계별 개수), `POST /admin/demo/reset` | 관리자 |
+| 피드백 | `POST /recruitments/:id/feedbacks`, `GET /me/feedbacks`, `GET /admin/feedbacks` (`recruitmentId`, `type`, `sort`) | 참여 테스터 / 본인 / 관리자 |
+| AI 분석 | `POST·GET /admin/recruitments/:id/analyses`, `POST …/analyses/stream` (SSE), `GET …/analyses/latest` · `/:version`, `POST …/analyses/review` | 관리자 |
+| 시연 | `POST /admin/demo/reset` | 관리자 |
 
-- 관리자 목록 응답에는 `filterCounts`(전체·모집 중·마감 임박·테스트 중·AI 분석 필요·분석 완료·종료·삭제)와 `stageCounts` 가 함께 옵니다. 프론트 대시보드의 숫자 카드와 필터 칩은 이 값을 씁니다. `GET /admin/dashboard` 는 남아 있지만 지금 프론트는 쓰지 않습니다.
-- `filter` 기준: 마감 임박 = 모집 중이면서 모집 마감일이 7일 안이거나 남은 자리가 1명, AI 분석 필요 = 피드백 마감이 지났고 피드백이 있는데 분석이 없음, 종료 = 확인 완료했거나 피드백 0건으로 피드백 마감이 지남, 삭제 = 삭제된 글만.
-- `PATCH …/:id/restore` 는 삭제한 글을 되살립니다. `deleted_at`·`deleted_ip` 를 **비우고** 요청 IP 를 `updated_ip` 에 기록하므로 이전 삭제 기록은 남지 않습니다. 삭제되지 않은 글이면 404 입니다.
+</details>
 
-오류는 항상 `{ statusCode, code, message, details? }` 형식이고 `message` 는 화면에 그대로 보여 줄 수 있는 쉬운 한국어입니다.
+---
 
-## 규칙(R1~R18)을 지키는 방법
+## 📏 핵심 규칙
+
+백엔드 최종 검사 → API 직접 호출로도 우회 불가. 전체 18개 규칙은 [기획서 7장](./기획서.md) 참고.
 
 | 규칙 | 구현 |
 |---|---|
-| R1 정원 1~50 / 동시 신청 | DTO 검증 + DB `CHECK` + 모집글 행 잠금(`FOR UPDATE`) 트랜잭션 안에서 인원 확인 |
-| R2 자동 마감 | 상태를 저장하지 않고 `관리자 마감 / 정원 참 / 시작됨`으로 계산. 신청으로 정원이 차면(또는 시작 전 정원을 참여자 수만큼 줄이면) 같은 트랜잭션에서 `test_started_at` 을 기록해 **바로 테스트를 시작** |
-| R3 중복 신청 금지 | 서비스 검사 + 부분 유니크 인덱스(`status='APPLIED'`) |
-| R4 시작 후 신청·취소 금지 | 잠금 트랜잭션 안에서 시각 확인. 시작 시각 = `start_at` 과 `test_started_at` 중 빠른 쪽 |
-| R5/R6 기기 조건·복사 | 신청 시 서버가 내 정보의 기기를 읽어 조건과 비교하고 신청 표에 복사 (요청의 기기 값은 무시). 조건이 없으면 모든 기기, 직접 입력한 모델은 OS 와 모델명(대소문자·공백 무시)으로 비교, 직접 입력한 OS 는 모든 기기 모집에만 맞음 |
-| R7 기기 수정 | `PATCH /me/device` 만 가능, 목록의 모델·OS 일치 확인. "기타"는 `deviceType=OTHER` + `deviceOsName`, 또는 `deviceModelName` 으로 받고 DB `CHECK` 로 고른 값·입력한 값을 동시에 못 둠 |
-| R8 기기 조건 겹침 금지 | 서비스 검사 + 부분 유니크 인덱스 + `CHECK`(특정 모델 조건은 `device_model_id`·`model_name` 중 하나만). 빈 배열 = 모든 기기 |
-| R9 피드백 | 참여 중인 사람만, 테스트 시작 ~ `feedback_due_at` 사이만, 유형 필수. `feedback_due_at >= end_at` 은 DB `CHECK` 로도 막음 |
-| R10 정원 축소 | 잠금 트랜잭션 안에서 현재 참여자 수와 비교 |
-| R11 Soft Delete·복구 | `deleted_at/deleted_ip` 만 기록, 모든 사용자 조회·신청·피드백·분석 실행·현황에서 제외. 복구는 두 칸을 비우고 `updated_ip` 기록 |
-| R12 IP 기록 | `trust proxy` 설정 후 서버가 요청에서 읽음 (수정·마감·마감 해제·복구는 `updated_ip`) |
-| R13/R14 AI 분석 | 피드백 0건이면 GPT 미호출, 키가 없으면 503 안내, 성공 시에만 `MAX(version_no)+1` 저장, 서버 단위 중복 호출 방지, DB 트리거로 수정·삭제 차단 |
-| R15 역할 | 전역 가드 + `@Roles(ADMIN｜USER)` |
-| R16 시연 초기화 | PostgreSQL advisory lock (`pg_try_advisory_lock`), 실행 중이면 409 |
-| R17 진행 단계 | `computeStage()`(응답용)와 같은 규칙의 SQL `CASE` 식(필터·개수용)으로 계산, 저장하지 않음 |
-| R18 분석 확인 완료 | 분석이 있을 때만 `analysis_reviewed_at` 기록. 최신 분석 시각보다 늦으면 "종료" |
+| 정원 1~50, 동시 신청 | DTO 검증 + DB `CHECK` + 모집글 행 잠금(`FOR UPDATE`) 트랜잭션 |
+| 정원 충족 시 자동 마감 | 같은 트랜잭션에서 `test_started_at` 기록 → 즉시 테스트 시작 |
+| 중복 신청 금지 | 서비스 검사 + 부분 유니크 인덱스 |
+| 테스트 시작 후 신청·취소 금지 | 잠금 트랜잭션 안 시각 확인 |
+| 기기 조건 일치 | 서버가 내 기기 조회·비교 후 신청에 복사 (요청 값 무시) |
+| 피드백 기간 | 참여 테스터 한정, 테스트 시작 ~ `feedback_due_at` |
+| Soft Delete · 복구 | `deleted_at`·`deleted_ip` 기록, 모든 조회에서 제외 |
+| AI 분석 | 피드백 0건 시 미호출, 성공 시에만 새 버전 저장, 중복 실행 방지, 트리거로 수정·삭제 차단 |
+| 시연 초기화 | PostgreSQL advisory lock, 실행 중이면 409 |
 
-## 환경변수
+---
 
-| 이름 | 필수 | 설명 / 형식 | 로컬 · 운영 | 민감 |
-|---|---|---|---|---|
-| `DATABASE_URL` | 예 | `postgresql://사용자:비밀번호@호스트/DB이름` (Render External URL) | 로컬·운영 모두 같은 형식 | **예** |
-| `DATABASE_SCHEMA` | 아니오(기본 `testory`) | 이 앱 전용 스키마 이름(소문자·숫자·`_`). 같은 DB 를 다른 과제와 나눠 쓸 때 섞이지 않게 함 | 동일 | 아니오 |
-| `DATABASE_SSL` | 아니오 | 비우면 localhost 가 아닐 때 자동으로 SSL. `true`/`false` 로 강제 | 로컬 DB 는 자동으로 꺼짐 | 아니오 |
-| `JWT_SECRET` | 예 | 16자 이상 랜덤 문자열 (`openssl rand -hex 32`) | 운영은 Render 가 생성 | **예** |
-| `JWT_EXPIRES_IN` | 아니오(7d) | `7d`, `12h` 등 | 동일 | 아니오 |
-| `FRONTEND_URL` | 예 | 허용할 프론트엔드 주소, 쉼표로 여러 개. 예: `https://testory.vercel.app` | 로컬 `http://localhost:3000` | 아니오 |
-| `GPT_API_KEY` | AI 분석에 필요 | OpenAI API 키. **백엔드에서만 사용** | 로컬 `.env`, 운영 Render 환경변수 | **예** |
-| `GPT_MODEL` | 아니오(gpt-4o-mini) | 사용할 모델 이름 | 동일 | 아니오 |
-| `GPT_SEARCH_MODEL` | 아니오(gpt-4.1-mini) | AI 분석 참고자료를 찾는 웹 검색 모델 (OpenAI `web_search` 도구 지원 모델) | 동일 | 아니오 |
-| `PORT` | 아니오(4000) | Render 가 자동 주입 | | 아니오 |
-| `NODE_ENV` | 아니오 | 운영은 `production` | | 아니오 |
-| `DEMO_SEED_ENABLED` | 운영에서 시연 데이터를 쓸 때 | `true` 여야 운영에서 시드·초기화 버튼이 동작 | 로컬은 불필요 | 아니오 |
-| `DEMO_PASSWORD` | 운영에서 시연 데이터를 쓸 때 | 데모 계정 비밀번호. 비우면 로컬 기본값을 쓰고 **운영에서는 반드시 직접 지정** | | **예** |
+## 🚀 시작하기
 
-`.env.example` 을 복사해 `.env` 를 만들고 값을 채웁니다. `.env` 는 Git 에 올라가지 않습니다.
-
-## 로컬 실행
+**사전 준비:** Node.js 22.12 이상, PostgreSQL
 
 ```bash
 npm ci
-cp .env.example .env     # DATABASE_URL, JWT_SECRET 등을 채우기
+cp .env.example .env        # DATABASE_URL, JWT_SECRET 등 입력
 npm run build
-npm run migration:run    # 스키마와 기기 모델 기본 목록 생성 (데이터를 지우지 않음)
-npm run seed             # 시연 데이터 생성 (관리자 1, 테스터 20, 모집글 10(삭제 1 포함), 피드백 36, AI 분석 3)
-npm run start:dev        # http://localhost:4000
+npm run migration:run       # 스키마 + 기기 모델 목록 생성 (기존 데이터 유지)
+npm run seed                # 시연 데이터 생성
+npm run start:dev           # http://localhost:4000
 ```
 
-- 마이그레이션은 **아직 실행하지 않은 것만** 순서대로 실행하며 `synchronize` 는 쓰지 않습니다. 실행 전 `src/database/migrations/` 의 SQL 을 확인하세요. 현재 상태는 `npm run migration:show`.
-- `npm run seed` / 관리자 화면의 "시연 데이터 초기화"는 **테스터·모집글·신청·피드백·AI 분석을 지우고 다시 만듭니다.** 관리자 계정과 기기 모델 목록은 남깁니다. 운영(`NODE_ENV=production`)에서는 `DEMO_SEED_ENABLED=true` 와 `DEMO_PASSWORD` 를 직접 정했을 때만 동작합니다.
-- 날짜는 실행 시점 기준으로 계산하므로 언제 눌러도 같은 진행 단계(모집 중·마감 임박·모집 마감·테스트 중·AI 분석 필요·분석 완료·종료·삭제)가 그대로 나옵니다. 모집글별 시연 목적은 기획서 9장에 있습니다.
+<details>
+<summary><b>환경변수 펼치기</b></summary>
 
-### 데모 계정 (시연 데이터에서 만들어지는 가짜 계정)
+| 이름 | 필수 | 설명 | 민감 |
+|---|---|---|---|
+| `DATABASE_URL` | ✅ | PostgreSQL 연결 주소 (`postgresql://사용자:비밀번호@호스트/DB`) | 🔒 |
+| `DATABASE_SCHEMA` | | 이 앱 전용 스키마 (기본 `testory`) | |
+| `DATABASE_SSL` | | SSL 강제 `true`/`false` (비우면 localhost 외 자동 SSL) | |
+| `JWT_SECRET` | ✅ | 토큰 서명 비밀값, 16자 이상 (`openssl rand -hex 32`) | 🔒 |
+| `JWT_EXPIRES_IN` | | 토큰 유효 기간 (기본 `7d`) | |
+| `FRONTEND_URL` | ✅ | 허용 프론트엔드 주소, 쉼표 구분 (끝 `/` 없이) | |
+| `GPT_API_KEY` | AI 분석 시 | OpenAI API 키 (백엔드 전용) | 🔒 |
+| `GPT_MODEL` | | 분석 모델 (기본 `gpt-4o-mini`) | |
+| `GPT_SEARCH_MODEL` | | 참고자료 웹 검색 모델 (기본 `gpt-4.1-mini`) | |
+| `PORT` | | 서버 포트 (기본 4000, Render 자동 주입) | |
+| `NODE_ENV` | | 운영 `production` | |
+| `DEMO_SEED_ENABLED` | 운영 시연 시 | `true` 일 때만 운영에서 시드·초기화 동작 | |
+| `DEMO_PASSWORD` | 운영 시연 시 | 데모 계정 비밀번호 (운영은 직접 지정) | 🔒 |
 
-| 역할 | 이메일 | 비밀번호(로컬 기본값) |
+</details>
+
+**시연 데이터** — 관리자 1 · 테스터 20 · 모집글 10(삭제 1) · 피드백 36 · AI 분석 3
+
+| 역할 | 이메일 | 비밀번호 |
 |---|---|---|
 | 관리자 | `admin@testory.demo` | `testory-demo-1234` |
-| 일반 사용자 | `tester01@testory.demo` ~ `tester20@testory.demo` | `testory-demo-1234` |
+| 일반 사용자 | `tester01` ~ `tester20@testory.demo` | `testory-demo-1234` |
 
-운영(배포 주소)도 `DEMO_PASSWORD=testory-demo-1234` 로 설정해 위 계정으로 로그인할 수 있습니다. 시연 데이터 초기화는 테스터 비밀번호를 `DEMO_PASSWORD` 로 다시 만들고, 관리자 비밀번호는 처음 만들 때 값을 그대로 둡니다.
+- `npm run seed` · 관리자 "시연 데이터 초기화": 테스터·모집글·신청·피드백·AI 분석 재생성 (관리자·기기 모델 유지)
+- 날짜 = 실행 시점 기준 계산 → 언제 실행해도 같은 진행 단계 구성
 
-## 테스트와 빌드
+---
 
-```bash
-npm test          # 단위 테스트 (규칙 함수 등)
-npm run test:e2e  # API 통합 테스트 — 실제 PostgreSQL 에 테스트 전용 스키마를 만들었다가 지움
-npm run lint      # 타입 검사 (tsc --noEmit)
-npm run build     # dist/ 생성
-```
+## 🧪 테스트 · 빌드
 
-- e2e 는 `TEST_DATABASE_URL`(예: 로컬 임시 PostgreSQL)이 있으면 그것을, 없으면 `.env` 의 `DATABASE_URL` 에 `testory_test_xxxx` 스키마를 만들어 실행하고 끝나면 삭제합니다. 원격 무료 DB 는 연결이 불안정할 수 있어 로컬 DB 사용을 권장합니다.
-- 테스트는 GPT 를 호출하지 않습니다(가짜 클라이언트 사용).
+| 명령 | 내용 |
+|---|---|
+| `npm test` | 단위 테스트 (규칙 함수 등) |
+| `npm run test:e2e` | API 통합 테스트 (테스트 전용 스키마 생성 후 삭제, `TEST_DATABASE_URL` 우선) |
+| `npm run lint` | 타입 검사 |
+| `npm run build` | `dist/` 생성 |
 
-## Render 배포
+- 테스트 중 GPT 미호출 (가짜 클라이언트)
+
+---
+
+## ☁️ 배포 (Render)
 
 | 항목 | 값 |
 |---|---|
-| 서비스 종류 | Web Service (Blueprint: `render.yaml`) |
-| Root Directory | 저장소 루트(비움) |
-| Runtime / Node | Node, `NODE_VERSION=26` (22.12 에서는 NestJS 12 를 불러올 때 `ERR_REQUIRE_CYCLE_MODULE` 로 빌드가 실패함) |
-| Build Command | `npm ci --include=dev && npm run build` |
-| Start Command | `npm run migration:run && npm run start:prod` |
+| 서비스 | Web Service (Blueprint: `render.yaml`) |
+| Node | `NODE_VERSION=26` |
+| **Build Command** | `npm ci --include=dev && npm run build` |
+| **Start Command** | `npm run migration:run && npm run start:prod` |
 | Health Check Path | `/health` |
-| 포트 | Render 의 `PORT` 를 사용하고 `0.0.0.0` 에 바인딩 |
-
-1. Render 에서 PostgreSQL 을 만듭니다(지역은 웹 서비스와 같게). 웹 서비스의 `DATABASE_URL` 에는 **Internal Database URL**, 로컬 `.env` 에는 External Database URL 을 넣습니다.
-2. 이 저장소를 Web Service(또는 Blueprint)로 연결하고 아래 환경변수를 입력합니다.
-3. 첫 배포 때 시작 명령이 마이그레이션을 먼저 실행합니다. 마이그레이션은 새 테이블을 추가하는 방식이라 기존 데이터를 지우지 않습니다. 데이터를 지우거나 바꾸는 마이그레이션을 추가할 때는 배포 전에 따로 검토하세요.
-4. 첫 시연 데이터는 로컬에서 같은 DB 로 `npm run seed` 를 실행해 만듭니다(관리자 계정이 아직 없으면 시드가 만듭니다). 이후에는 관리자로 로그인해 사용자 메뉴의 "시연 데이터 초기화"로 다시 채웁니다(운영에서는 `DEMO_SEED_ENABLED=true` 와 `DEMO_PASSWORD` 필요).
-5. 프론트엔드는 Vercel 의 rewrite 로 이 서버를 같은 오리진처럼 호출하므로 쿠키가 1st-party 로 동작합니다. `FRONTEND_URL` 은 Vercel 주소와 **정확히 같아야** 합니다(끝에 `/` 없이). 다르면 로그인을 포함한 모든 변경 요청이 403("허용되지 않은 출처의 요청이에요.")이 됩니다. 미리보기 주소도 쓰려면 쉼표로 추가합니다.
 
 | 환경변수 (Render) | 값 |
 |---|---|
-| `NODE_VERSION` | `26` |
 | `NODE_ENV` | `production` |
-| `DATABASE_URL` | Render PostgreSQL 의 Internal Database URL |
+| `DATABASE_URL` | Render PostgreSQL **Internal** Database URL |
 | `DATABASE_SCHEMA` | `testory` |
-| `JWT_SECRET` | 랜덤 문자열 (`openssl rand -hex 32`) |
-| `JWT_EXPIRES_IN` | `7d` |
+| `JWT_SECRET` | 랜덤 문자열 (Blueprint 자동 생성) |
 | `FRONTEND_URL` | `https://testory-level01-frontend.vercel.app` |
 | `GPT_API_KEY` | OpenAI API 키 |
 | `DEMO_SEED_ENABLED` | `true` |
 | `DEMO_PASSWORD` | `testory-demo-1234` |
 
-- 로그인·가입은 IP 당 1분에 10회까지만 받습니다. 넘으면 "요청이 너무 많아요."가 나오고 1분 뒤 다시 됩니다.
+1. Render PostgreSQL 생성 (웹 서비스와 같은 지역)
+2. 저장소를 Web Service(또는 Blueprint)로 연결 → 환경변수 입력
+3. 시작 시 마이그레이션 자동 실행 (데이터 삭제 없음)
+4. 첫 시연 데이터: 로컬에서 External URL 로 `npm run seed`, 이후 관리자 화면에서 초기화
+5. `FRONTEND_URL` = Vercel 주소와 정확히 일치 (불일치 시 변경 요청 403)
 
-배포 주소: <https://testory-level01-backend.onrender.com> (Health: <https://testory-level01-backend.onrender.com/health>)
+---
+
+## 📁 폴더 구조
+
+<details>
+<summary><b>펼치기</b></summary>
+
+```
+src/
+  main.ts, app.module.ts, app.setup.ts   # 부팅, 모듈 조립, 공통 설정
+  config/                                # 환경변수 스키마 (zod)
+  common/                                # 가드, 필터, 데코레이터, 열거형
+  database/                              # data-source, migrations, seed
+  modules/                               # auth, users, device-models, recruitments,
+                                         # applications, feedbacks, ai-analyses,
+                                         # dashboard, demo, health
+test/                                    # API 통합 테스트
+```
+
+- 모듈 구조: controller(요청·응답) → service(규칙) → TypeORM
+
+</details>
