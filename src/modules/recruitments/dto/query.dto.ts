@@ -1,7 +1,7 @@
 import { Transform } from 'class-transformer';
 import { IsEnum, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { Os } from '../../../common/enums';
-import { STAGES, type Stage } from '../recruitment-rules';
+import { ADMIN_LIST_FILTERS, STAGES, type AdminListFilter, type Stage } from '../recruitment-rules';
 
 export enum StatusFilter {
   OPEN = 'OPEN',
@@ -57,4 +57,9 @@ export class AdminRecruitmentListQueryDto extends RecruitmentListQueryDto {
   @IsOptional()
   @IsIn(STAGES)
   stage?: Stage;
+
+  /** 관리자 목록 필터 (비우면 전체). deleted 와 함께 쓰면 deleted 로 먼저 거른다. */
+  @IsOptional()
+  @IsIn(ADMIN_LIST_FILTERS)
+  filter?: AdminListFilter;
 }

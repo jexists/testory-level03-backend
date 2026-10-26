@@ -5,11 +5,8 @@ import { ApplicationStatus, FeedbackType } from '../../common/enums';
 import { AiAnalysis } from '../ai-analyses/ai-analysis.entity';
 import { Application } from '../applications/application.entity';
 import { Feedback } from '../feedbacks/feedback.entity';
-import { computeStage, STAGES, type Stage } from '../recruitments/recruitment-rules';
+import { CLOSING_SOON_DAYS, computeStage, STAGES, type Stage } from '../recruitments/recruitment-rules';
 import { Recruitment } from '../recruitments/recruitment.entity';
-
-/** "곧 모집 마감"으로 볼 기간 */
-const CLOSING_SOON_DAYS = 7;
 
 @Injectable()
 export class DashboardService {

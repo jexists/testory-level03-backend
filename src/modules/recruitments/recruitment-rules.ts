@@ -117,6 +117,16 @@ export type Stage = 'RECRUITING' | 'RECRUIT_CLOSED' | 'TESTING' | 'FEEDBACK_DONE
 export type PublicStage = 'RECRUITING' | 'RECRUIT_CLOSED' | 'TESTING' | 'FEEDBACK_CLOSED';
 export const STAGES: Stage[] = ['RECRUITING', 'RECRUIT_CLOSED', 'TESTING', 'FEEDBACK_DONE', 'ANALYZED', 'DONE'];
 
+/** "곧 모집 마감"으로 볼 기간 (대시보드 카드·마감 임박 필터가 함께 쓴다) */
+export const CLOSING_SOON_DAYS = 7;
+
+/**
+ * 관리자 목록 필터. 진행 단계를 그대로 쓰지 않고 관리자가 할 일 기준으로 묶는다.
+ * 삭제된 글은 DELETED 에만 들어가고, 모집 마감(RECRUIT_CLOSED)은 "전체"에서만 보인다.
+ */
+export type AdminListFilter = 'RECRUITING' | 'CLOSING_SOON' | 'TESTING' | 'NEEDS_ANALYSIS' | 'ANALYZED' | 'DONE' | 'DELETED';
+export const ADMIN_LIST_FILTERS: AdminListFilter[] = ['RECRUITING', 'CLOSING_SOON', 'TESTING', 'NEEDS_ANALYSIS', 'ANALYZED', 'DONE', 'DELETED'];
+
 export interface StageInput extends StatusInput {
   feedbackDueAt: Date;
   /** 가장 최근 AI 분석 시각. 분석이 없으면 null */

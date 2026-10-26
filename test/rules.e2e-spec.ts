@@ -283,6 +283,64 @@ describe('관리자 목록: 복구·단계 필터', () => {
     }
     expect((await admin.get('/admin/recruitments?stage=WRONG')).status).toBe(400);
   });
+
+  it('filter 결과와 필터별 개수가 관리자 필터 규칙과 맞는다', async () => {
+    const soon = await createRecruitment({ title: '필터칩 마감3일', startAt: new Date(Date.now() + 3 * DAY).toISOString() });
+    const later = { startAt: new Date(Date.now() + 20 * DAY).toISOString(), endAt: new Date(Date.now() + 25 * DAY).toISOString() };
+    const seat = await createRecruitment({ title: '필터칩 한자리', capacity: 2, ...later });
+    const { agent, id: userId } = await signup(ctx, 'filterchip@test.dev');
+    expect((await agent.post(`/recruitments/${seat.id}/applications`)).status).toBe(201);
+    const far = await createRecruitment({ title: '필터칩 여유', ...later });
+    const closed = await createRecruitment({ title: '필터칩 수동마감', ...later });
+    expect((await admin.patch(`/admin/recruitments/${closed.id}/close`)).status).toBe(200);
+    const testing = await createRecruitment({ title: '필터칩 테스트중' });
+    await startTest(ctx, testing.id);
+
+    const needs = await createRecruitment({ title: '필터칩 분석필요' });
+    const empty = await createRecruitment({ title: '필터칩 피드백없음' });
+    const analyzed = await createRecruitment({ title: '필터칩 분석완료' });
+    const reviewed = await createRecruitment({ title: '필터칩 확인완료' });
+    for (const r of [needs, empty, analyzed, reviewed]) await endFeedback(ctx, r.id);
+    await ctx.ds.query(`INSERT INTO "${ctx.schema}"."feedbacks" (recruitment_id, user_id, type, title, content) VALUES ($1,$2,'BUG','t','c')`, [needs.id, userId]);
+    const [{ id: adminId }] = await ctx.ds.query(`SELECT id FROM "${ctx.schema}"."users" WHERE email = 'admin@test.dev'`);
+    for (const r of [analyzed, reviewed]) {
+      await ctx.ds.query(
+        `INSERT INTO "${ctx.schema}"."ai_analyses" (recruitment_id, version_no, result, feedback_count, model_name, created_by, created_at) VALUES ($1, 1, '{}', 1, 'test', $2, now() - interval '30 minutes')`,
+        [r.id, adminId],
+      );
+    }
+    await ctx.ds.query(`UPDATE "${ctx.schema}"."recruitments" SET analysis_reviewed_at = now() WHERE id = $1`, [reviewed.id]);
+    const deleted = await createRecruitment({ title: '필터칩 삭제됨' });
+    expect((await admin.delete(`/admin/recruitments/${deleted.id}`)).status).toBe(204);
+
+    const expected: Record<string, number[]> = {
+      RECRUITING: [soon.id, seat.id, far.id],
+      CLOSING_SOON: [soon.id, seat.id],
+      TESTING: [testing.id],
+      NEEDS_ANALYSIS: [needs.id],
+      ANALYZED: [analyzed.id],
+      DONE: [empty.id, reviewed.id],
+      DELETED: [deleted.id],
+    };
+    const all = (await admin.get('/admin/recruitments?q=필터칩&deleted=include&limit=50')).body;
+    expect(all.total).toBe(10);
+    expect(all.items.map((i: { id: number }) => i.id)).toContain(deleted.id);
+    expect(all.filterCounts).toEqual({ ALL: 10, ...Object.fromEntries(Object.entries(expected).map(([k, v]) => [k, v.length])) });
+
+    for (const [filter, ids] of Object.entries(expected)) {
+      const page = (await admin.get(`/admin/recruitments?q=필터칩&deleted=include&filter=${filter}&limit=50`)).body;
+      expect(page.total, filter).toBe(all.filterCounts[filter]);
+      expect(page.items.map((i: { id: number }) => i.id).sort(), filter).toEqual([...ids].sort());
+      expect(page.filterCounts).toEqual(all.filterCounts);
+    }
+
+    // 수동 마감 글은 전체에서만 보인다. 삭제 글을 숨기면 개수에서도 빠진다.
+    expect(Object.values(expected).flat()).not.toContain(closed.id);
+    const hidden = (await admin.get('/admin/recruitments?q=필터칩')).body;
+    expect(hidden.filterCounts.ALL).toBe(9);
+    expect(hidden.filterCounts.DELETED).toBe(0);
+    expect((await admin.get('/admin/recruitments?filter=WRONG')).status).toBe(400);
+  });
 });
 
 describe('신청·취소 (R1~R6, R15)', () => {
@@ -522,14 +580,18 @@ describe('시연 데이터 초기화 (R16)', () => {
     expect(codes).toEqual([200, 409]);
     expect(results.find((r) => r.status === 409)!.body.message).toBe('이미 초기화 중이에요.');
     const ok = results.find((r) => r.status === 200)!.body;
-    expect(ok).toMatchObject({ testers: 20, recruitments: 5, feedbacks: 30, analyses: 2 });
+    expect(ok).toMatchObject({ testers: 20, recruitments: 10, feedbacks: 36, analyses: 3 });
 
     // 관리자 계정은 남고, 시연 데이터가 채워졌다
     const dash = (await admin.get('/admin/dashboard')).body;
-    expect(dash.recruitments).toHaveLength(5);
-    expect(dash.recruitments.reduce((n: number, r: { feedbackCount: number }) => n + r.feedbackCount, 0)).toBe(30);
+    // 대시보드는 삭제된 글(시연 데이터 1개)을 빼고 센다
+    expect(dash.recruitments).toHaveLength(9);
+    expect(dash.recruitments.reduce((n: number, r: { feedbackCount: number }) => n + r.feedbackCount, 0)).toBe(36);
     expect(dash.counts).toEqual({ recruiting: 2, closingSoon: 1, filledEarly: 1 });
-    expect(dash.stageCounts).toEqual({ RECRUITING: 2, RECRUIT_CLOSED: 0, TESTING: 1, FEEDBACK_DONE: 1, ANALYZED: 1, DONE: 0 });
+    expect(dash.stageCounts).toEqual({ RECRUITING: 2, RECRUIT_CLOSED: 1, TESTING: 2, FEEDBACK_DONE: 2, ANALYZED: 1, DONE: 1 });
+    // 관리자 목록 필터마다 시연 글이 하나 이상 들어간다
+    const filters = (await admin.get('/admin/recruitments?deleted=include&limit=1')).body.filterCounts;
+    expect(filters).toEqual({ ALL: 10, RECRUITING: 2, CLOSING_SOON: 1, TESTING: 2, NEEDS_ANALYSIS: 1, ANALYZED: 1, DONE: 2, DELETED: 1 });
     const states = (await ctx.http().get('/recruitments?limit=50')).body.items.map((i: { title: string; stage: string }) => [i.title, i.stage]);
     expect(states).toEqual(
       expect.arrayContaining([

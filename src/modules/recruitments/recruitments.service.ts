@@ -12,12 +12,15 @@ import { RecruitmentBodyDto } from './dto/recruitment.dto';
 import { AdminRecruitmentListQueryDto, DeletedFilter, RecruitmentListQueryDto, StatusFilter } from './dto/query.dto';
 import { RecruitmentDevice } from './recruitment-device.entity';
 import {
+  ADMIN_LIST_FILTERS,
+  CLOSING_SOON_DAYS,
   computeStage,
   computeStatus,
   defaultFeedbackDueAt,
   STAGES,
   toPublicStage,
   validateDeviceConditions,
+  type AdminListFilter,
   type KnownModel,
   type Stage,
 } from './recruitment-rules';
@@ -129,6 +132,26 @@ export class RecruitmentsService {
       ELSE 'RECRUITING' END`;
   }
 
+  /** 관리자 목록 필터마다의 SQL 조건. 필터 결과와 필터 칩 숫자가 같은 식을 쓴다. */
+  private filterConditions(qb: SelectQueryBuilder<Recruitment>): Record<AdminListFilter, string> {
+    const stage = `(${this.stageExpression(qb)})`;
+    const participants = `(${this.participantsSubQuery(qb)})`;
+    const feedbacks = `(${this.feedbackSubQuery(qb)})`;
+    const alive = 'r.deletedAt IS NULL';
+    const recruiting = `${alive} AND ${stage} = 'RECRUITING'`;
+    return {
+      RECRUITING: recruiting,
+      // 모집 중인 글 가운데 마감이 7일 안이거나(대시보드 카드와 같은 기준) 한 자리만 남은 글
+      CLOSING_SOON: `${recruiting} AND (r.startAt <= now() + interval '${CLOSING_SOON_DAYS} days' OR r.capacity - ${participants} = 1)`,
+      TESTING: `${alive} AND ${stage} = 'TESTING'`,
+      // 피드백이 다 모였고 아직 분석이 하나도 없는 글. 피드백이 없으면 분석할 수 없으므로 종료로 본다.
+      NEEDS_ANALYSIS: `${alive} AND ${stage} = 'FEEDBACK_DONE' AND ${feedbacks} > 0`,
+      ANALYZED: `${alive} AND ${stage} = 'ANALYZED'`,
+      DONE: `${alive} AND (${stage} = 'DONE' OR (${stage} = 'FEEDBACK_DONE' AND ${feedbacks} = 0))`,
+      DELETED: 'r.deletedAt IS NOT NULL',
+    };
+  }
+
   private baseListQuery(q: RecruitmentListQueryDto, admin: boolean) {
     const qb = this.ds.getRepository(Recruitment).createQueryBuilder('r');
     const participants = this.participantsSubQuery(qb);
@@ -193,9 +216,17 @@ export class RecruitmentsService {
     const limit = q.limit ?? 12;
     const qb = this.baseListQuery(q, admin);
 
-    // 관리자: 단계 탭 숫자는 검색·삭제 조건만 반영하고, 목록은 고른 단계로 거른다.
+    // 관리자: 단계 탭·필터 칩 숫자는 검색·삭제 조건만 반영하고, 목록은 고른 단계·필터로 거른다.
     let stageCounts: Record<Stage, number> | undefined;
+    let filterCounts: Record<AdminListFilter | 'ALL', number> | undefined;
     if (admin) {
+      const conditions = this.filterConditions(qb);
+      const counted = qb.clone().select('COUNT(*)', 'ALL');
+      for (const f of ADMIN_LIST_FILTERS) counted.addSelect(`COUNT(*) FILTER (WHERE ${conditions[f]})`, f);
+      const counts: Record<string, string> = (await counted.getRawOne()) ?? {};
+      filterCounts = { ALL: Number(counts.ALL ?? 0) } as Record<AdminListFilter | 'ALL', number>;
+      for (const f of ADMIN_LIST_FILTERS) filterCounts[f] = Number(counts[f] ?? 0);
+
       const stage = this.stageExpression(qb);
       const rows: { stage: Stage; n: string }[] = await qb
         .clone()
@@ -207,6 +238,8 @@ export class RecruitmentsService {
       for (const row of rows) stageCounts[row.stage] = Number(row.n);
       const picked = (q as AdminRecruitmentListQueryDto).stage;
       if (picked) qb.andWhere(`(${stage}) = :stage`, { stage: picked });
+      const filter = (q as AdminRecruitmentListQueryDto).filter;
+      if (filter) qb.andWhere(`(${conditions[filter]})`);
       const bugs = qb
         .subQuery()
         .select('COUNT(*)')
@@ -235,7 +268,7 @@ export class RecruitmentsService {
           }
         : {}),
     }));
-    return { items, total, page, limit, ...(stageCounts ? { stageCounts } : {}) };
+    return { items, total, page, limit, ...(stageCounts ? { stageCounts } : {}), ...(filterCounts ? { filterCounts } : {}) };
   }
 
   async detail(id: number, admin = false, userId?: number) {
