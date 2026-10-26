@@ -12,6 +12,8 @@ import { buildDataSourceOptions } from '../src/database/data-source';
 import { InitSchema1761400000000 } from '../src/database/migrations/1761400000000-InitSchema';
 import { DeviceOther1761500000000 } from '../src/database/migrations/1761500000000-DeviceOther';
 import { RecruitmentStage1761600000000 } from '../src/database/migrations/1761600000000-RecruitmentStage';
+import { RecruitmentDeviceOther1761700000000 } from '../src/database/migrations/1761700000000-RecruitmentDeviceOther';
+import { DropRecruitmentKind1761800000000 } from '../src/database/migrations/1761800000000-DropRecruitmentKind';
 
 export const PASSWORD = 'test-password-1234';
 const DAY = 86_400_000;
@@ -47,7 +49,13 @@ export async function createTestApp(configure?: (b: ReturnType<typeof Test.creat
 
   const migrator = new DataSource({
     ...buildDataSourceOptions({ DATABASE_URL: dbUrl, DATABASE_SCHEMA: schema }),
-    migrations: [InitSchema1761400000000, DeviceOther1761500000000, RecruitmentStage1761600000000],
+    migrations: [
+      InitSchema1761400000000,
+      DeviceOther1761500000000,
+      RecruitmentStage1761600000000,
+      RecruitmentDeviceOther1761700000000,
+      DropRecruitmentKind1761800000000,
+    ],
   });
   await migrator.initialize();
   await migrator.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);

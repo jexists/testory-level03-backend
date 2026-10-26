@@ -109,6 +109,17 @@ export class RecruitmentsService {
       .getQuery();
   }
 
+  /** 참여 중인 사람 가운데 피드백을 1건 이상 낸 사람 수. 한 사람이 여러 건 써도 한 번만 센다. */
+  private feedbackAuthorSubQuery(qb: SelectQueryBuilder<Recruitment>): string {
+    return qb
+      .subQuery()
+      .select('COUNT(DISTINCT fa.userId)')
+      .from(Feedback, 'fa')
+      .innerJoin(Application, 'fap', `fap.recruitmentId = fa.recruitmentId AND fap.userId = fa.userId AND fap.status = '${ApplicationStatus.APPLIED}'`)
+      .where('fa.recruitmentId = r.id')
+      .getQuery();
+  }
+
   private feedbackSubQuery(qb: SelectQueryBuilder<Recruitment>): string {
     return qb.subQuery().select('COUNT(*)').from(Feedback, 'f').where('f.recruitmentId = r.id').getQuery();
   }
@@ -246,7 +257,9 @@ export class RecruitmentsService {
         .where(`fb.recruitmentId = r.id AND fb.type = '${FeedbackType.BUG}'`)
         .getQuery();
       const version = qb.subQuery().select('MAX(av.versionNo)').from(AiAnalysis, 'av').where('av.recruitmentId = r.id').getQuery();
-      qb.addSelect(`(${bugs})::int`, 'bug_count').addSelect(`(${version})`, 'latest_version');
+      qb.addSelect(`(${bugs})::int`, 'bug_count')
+        .addSelect(`(${this.feedbackAuthorSubQuery(qb)})::int`, 'feedback_author_count')
+        .addSelect(`(${version})`, 'latest_version');
     }
 
     const total = await qb.clone().getCount();
@@ -263,6 +276,7 @@ export class RecruitmentsService {
         ? {
             ...this.adminFields(r, Number(raw[i].participants), toDate(raw[i].latest_analysis_at)),
             bugCount: Number(raw[i].bug_count),
+            feedbackAuthorCount: Number(raw[i].feedback_author_count),
             latestAnalysisVersion: raw[i].latest_version == null ? null : Number(raw[i].latest_version),
           }
         : {}),
@@ -278,6 +292,15 @@ export class RecruitmentsService {
     qb.addSelect(`(${participants})::int`, 'participants')
       .addSelect(`(${feedbacks})::int`, 'feedback_count')
       .addSelect(`(${this.latestAnalysisSubQuery(qb)})`, 'latest_analysis_at');
+    if (admin) {
+      const cancelled = qb
+        .subQuery()
+        .select('COUNT(*)')
+        .from(Application, 'ca')
+        .where(`ca.recruitmentId = r.id AND ca.status = '${ApplicationStatus.CANCELLED}'`)
+        .getQuery();
+      qb.addSelect(`(${this.feedbackAuthorSubQuery(qb)})::int`, 'feedback_author_count').addSelect(`(${cancelled})::int`, 'cancelled_count');
+    }
     const { entities, raw } = await qb.getRawAndEntities();
     const r = entities[0];
     if (!r) throw notFound('RECRUITMENT_NOT_FOUND', MSG.RECRUITMENT_NOT_FOUND);
@@ -289,7 +312,13 @@ export class RecruitmentsService {
       : null;
     return {
       ...this.toView(r, Number(raw[0].participants), admin ? Number(raw[0].feedback_count) : null, conditions.get(r.id) ?? []),
-      ...(admin ? this.adminFields(r, Number(raw[0].participants), toDate(raw[0].latest_analysis_at)) : {}),
+      ...(admin
+        ? {
+            ...this.adminFields(r, Number(raw[0].participants), toDate(raw[0].latest_analysis_at)),
+            feedbackAuthorCount: Number(raw[0].feedback_author_count),
+            cancelledCount: Number(raw[0].cancelled_count),
+          }
+        : {}),
       ...(userId ? { myApplication: mine ? { id: mine.id, status: mine.status, appliedAt: mine.appliedAt } : null } : {}),
     };
   }

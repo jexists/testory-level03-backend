@@ -203,6 +203,30 @@ describe('모집글 등록·수정·삭제 (R1, R8, R10, R11, R12)', () => {
     expect((await admin.patch(`/admin/recruitments/${r.id}`).send(recruitmentBody({ capacity: 3 }))).status).toBe(200);
   });
 
+  it('관리자 목록·상세의 피드백 낸 사람 수는 참여 중인 사람만 한 번씩 센다', async () => {
+    const r = await createRecruitment({ title: '피드백낸사람' });
+    const users = [];
+    for (const email of ['author1@test.dev', 'author2@test.dev', 'author3@test.dev']) {
+      const u = await signup(ctx, email);
+      expect((await u.agent.post(`/recruitments/${r.id}/applications`)).status).toBe(201);
+      users.push(u);
+    }
+    const insert = `INSERT INTO "${ctx.schema}"."feedbacks" (recruitment_id, user_id, type, title, content) VALUES ($1,$2,'BUG','t','c')`;
+    // 1번은 두 건, 3번은 한 건 쓰고 신청을 취소했다. 2번은 쓰지 않았다.
+    await ctx.ds.query(insert, [r.id, users[0].id]);
+    await ctx.ds.query(insert, [r.id, users[0].id]);
+    await ctx.ds.query(insert, [r.id, users[2].id]);
+    await ctx.ds.query(`UPDATE "${ctx.schema}"."applications" SET status = 'CANCELLED', cancelled_at = now() WHERE recruitment_id = $1 AND user_id = $2`, [r.id, users[2].id]);
+
+    const item = (await admin.get('/admin/recruitments?q=피드백낸사람')).body.items[0];
+    expect(item.participants).toBe(2);
+    expect(item.feedbackCount).toBe(3);
+    expect(item.feedbackAuthorCount).toBe(1);
+    const detail = (await admin.get(`/admin/recruitments/${r.id}`)).body;
+    expect(detail.feedbackAuthorCount).toBe(1);
+    expect(detail.cancelledCount).toBe(1);
+  });
+
   it('삭제는 Soft Delete 이고 일반 사용자에게는 어디에도 보이지 않는다 (R11)', async () => {
     const r = await createRecruitment({ title: '삭제될 글' });
     const { agent, id: userId } = await signup(ctx, 'softdel@test.dev');
