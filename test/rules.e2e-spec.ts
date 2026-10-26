@@ -136,7 +136,7 @@ describe('모집글 등록·수정·삭제 (R1, R8, R10, R11, R12)', () => {
   it('DB 에도 1~50 제한이 있어 서버를 우회해도 저장되지 않는다', async () => {
     await expect(
       ctx.ds.query(
-        `INSERT INTO "${ctx.schema}"."recruitments" (title, description, kind, capacity, start_at, end_at, created_by) VALUES ('x','x','FEATURE',51, now(), now() + interval '1 day', 1)`,
+        `INSERT INTO "${ctx.schema}"."recruitments" (title, description, capacity, start_at, end_at, created_by) VALUES ('x','x',51, now(), now() + interval '1 day', 1)`,
       ),
     ).rejects.toThrow();
   });

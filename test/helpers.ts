@@ -116,7 +116,6 @@ export async function signup(
 export const recruitmentBody = (over: Record<string, unknown> = {}) => ({
   title: '테스트 모집',
   description: '설명',
-  kind: 'FEATURE',
   capacity: 15,
   startAt: new Date(Date.now() + 5 * DAY).toISOString(),
   endAt: new Date(Date.now() + 10 * DAY).toISOString(),

@@ -12,11 +12,6 @@ export enum Os {
 export const OS_OTHER = 'OTHER';
 export type OsInput = Os | typeof OS_OTHER;
 
-export enum RecruitmentKind {
-  APP_FULL = 'APP_FULL',
-  FEATURE = 'FEATURE',
-}
-
 export enum DeviceScope {
   ALL = 'ALL',
   MODEL = 'MODEL',

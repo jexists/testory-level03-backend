@@ -1,5 +1,4 @@
 import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
-import { RecruitmentKind } from '../../common/enums';
 import { RecruitmentDevice } from './recruitment-device.entity';
 
 @Entity({ name: 'recruitments' })
@@ -12,9 +11,6 @@ export class Recruitment {
 
   @Column({ type: 'text' })
   description: string;
-
-  @Column({ type: 'varchar', length: 12 })
-  kind: RecruitmentKind;
 
   @Column({ type: 'int', default: 15 })
   capacity: number;

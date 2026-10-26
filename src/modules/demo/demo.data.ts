@@ -1,4 +1,4 @@
-import { FeedbackType, Os, RecruitmentKind } from '../../common/enums';
+import { FeedbackType, Os } from '../../common/enums';
 
 /** 시연용 가상 데이터. 이름·이메일·IP 는 모두 가짜이고, IP 는 문서용 대역(203.0.113.x)만 쓴다. */
 
@@ -32,7 +32,6 @@ export const testerEmail = (index: number) => `tester${String(index + 1).padStar
 export interface DemoRecruitment {
   title: string;
   description: string;
-  kind: RecruitmentKind;
   capacity: number;
   /** 시작일(모집 마감일): 오늘 기준 며칠 뒤 (음수는 이미 시작) */
   startInDays: number;
@@ -58,7 +57,6 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
     title: '하루칸 앱 전체 베타 테스트',
     description:
       '하루칸 1.0 출시 전, 앱 전체를 일주일 이상 직접 써 보실 테스터를 모십니다. 일정 등록부터 알림, 공유까지 평소처럼 써 보시고 불편했던 점을 알려 주세요.',
-    kind: RecruitmentKind.APP_FULL,
     capacity: 15,
     startInDays: 4,
     endInDays: 18,
@@ -75,7 +73,6 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
     title: '알림 기능 테스트',
     description:
       '일정 알림(시간 지정, 반복 알림, 방해 금지 시간)을 써 보고 알림이 제때 오는지, 설정이 이해되는지 알려 주세요.',
-    kind: RecruitmentKind.FEATURE,
     capacity: 20,
     startInDays: -16,
     endInDays: -6,
@@ -90,7 +87,6 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
   {
     title: '일정 공유 기능 테스트',
     description: '친구·가족과 일정을 공유하는 기능을 써 볼 테스터를 모집합니다. 초대 링크로 함께 쓸 분이 있으면 더 좋아요.',
-    kind: RecruitmentKind.FEATURE,
     capacity: 10,
     startInDays: 5,
     endInDays: 19,
@@ -104,7 +100,6 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
   {
     title: '반복 일정 기능 테스트',
     description: '매주·매월 반복되는 일정을 만들고 수정해 보는 테스트입니다. 시작일이 멀어서 신청 취소도 해 볼 수 있어요.',
-    kind: RecruitmentKind.FEATURE,
     capacity: 15,
     startInDays: 30,
     endInDays: 44,
@@ -115,7 +110,6 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
   {
     title: '캘린더 화면 개선 테스트',
     description: '새로 바뀐 월간·주간 캘린더 화면을 써 보는 iOS 전용 테스트입니다. 관리자가 모집을 먼저 마감했어요.',
-    kind: RecruitmentKind.FEATURE,
     capacity: 15,
     startInDays: -12,
     endInDays: -4,
@@ -127,7 +121,6 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
   {
     title: '홈 화면 위젯 테스트',
     description: '홈 화면에 올리는 오늘 일정 위젯을 써 보는 테스트입니다. 신청자가 충분히 모여 관리자가 시작 전에 모집을 마감했어요.',
-    kind: RecruitmentKind.FEATURE,
     capacity: 12,
     startInDays: 7,
     endInDays: 21,
@@ -142,7 +135,6 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
   {
     title: '일정 검색 기능 테스트',
     description: '지난 일정과 메모를 검색해 보는 테스트입니다. 정원은 다 차지 않았지만 시작일이 지나 테스트가 진행 중이에요.',
-    kind: RecruitmentKind.FEATURE,
     capacity: 20,
     startInDays: -3,
     endInDays: 11,
@@ -153,7 +145,6 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
   {
     title: '온보딩 화면 개선 테스트',
     description: '처음 실행할 때 나오는 안내 화면을 새로 만들었어요. 끝까지 따라가 보고 이해하기 어려운 부분을 알려 주세요.',
-    kind: RecruitmentKind.FEATURE,
     capacity: 10,
     startInDays: -25,
     endInDays: -15,
@@ -165,7 +156,6 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
   {
     title: '로그인 화면 테스트',
     description: '간편 로그인 화면을 써 보는 짧은 테스트입니다. 아쉽게도 마감까지 피드백이 들어오지 않았어요.',
-    kind: RecruitmentKind.FEATURE,
     capacity: 5,
     startInDays: -10,
     endInDays: -5,
@@ -179,7 +169,6 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
   {
     title: '테마 설정 기능 테스트',
     description: '앱 색상 테마를 고르는 기능 테스트입니다. 기획이 바뀌어 관리자가 삭제했어요.',
-    kind: RecruitmentKind.FEATURE,
     capacity: 10,
     startInDays: 10,
     endInDays: 24,

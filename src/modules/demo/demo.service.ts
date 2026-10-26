@@ -125,7 +125,6 @@ export class DemoService {
         m.getRepository(Recruitment).create({
           title: d.title,
           description: d.description,
-          kind: d.kind,
           capacity: d.capacity,
           startAt: new Date(now + d.startInDays * DAY),
           endAt,
