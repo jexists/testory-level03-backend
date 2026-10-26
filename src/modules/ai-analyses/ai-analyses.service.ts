@@ -129,6 +129,17 @@ export class AiAnalysesService {
     return this.toDetail(row, row.creator?.nickname ?? null);
   }
 
+  /** 관리자가 최신 분석 결과를 확인했다고 표시한다. 진행 단계가 "종료"가 된다. (분석을 다시 돌리면 "분석 완료"로 돌아간다) */
+  async review(recruitmentId: number) {
+    await this.recruitments.getActiveOrThrow(recruitmentId);
+    if (!(await this.ds.getRepository(AiAnalysis).existsBy({ recruitmentId }))) {
+      throw badRequest('ANALYSIS_REVIEW_NONE', MSG.ANALYSIS_REVIEW_NONE);
+    }
+    const analysisReviewedAt = new Date();
+    await this.ds.getRepository(Recruitment).update({ id: recruitmentId }, { analysisReviewedAt });
+    return { analysisReviewedAt };
+  }
+
   private toDetail(a: AiAnalysis, creatorNickname: string | null) {
     return {
       versionNo: a.versionNo,

@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe, Post } from '@nestjs/common';
+import { Controller, Get, HttpCode, Param, ParseIntPipe, Post } from '@nestjs/common';
 import { ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser, Roles } from '../../common/decorators';
@@ -19,6 +19,13 @@ export class AiAnalysesController {
   @Post()
   analyze(@Param('id', ParseIntPipe) id: number, @CurrentUser() admin: User) {
     return this.analyses.analyze(id, admin);
+  }
+
+  /** 최신 분석을 "확인 완료"로 표시한다. */
+  @Post('review')
+  @HttpCode(200)
+  review(@Param('id', ParseIntPipe) id: number) {
+    return this.analyses.review(id);
   }
 
   /** 저장된 분석 버전 목록 (버전 번호, 분석 시각, 분석 당시 피드백 수) */

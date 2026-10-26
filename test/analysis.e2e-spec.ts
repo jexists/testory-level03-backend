@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GptClient } from '../src/modules/ai-analyses/gpt.client';
-import { createTestApp, insertAdmin, login, recruitmentBody, signup, type TestCtx } from './helpers';
+import { createTestApp, endFeedback, insertAdmin, login, recruitmentBody, signup, startTest, type TestCtx } from './helpers';
 
 const RESULT = {
   recurringIssues: ['반복 문제'],
@@ -36,6 +36,7 @@ beforeAll(async () => {
   emptyId = (await admin.post('/admin/recruitments').send(recruitmentBody({ title: '피드백 없음' }))).body.id;
   const u = await signup(ctx, 'writer@test.dev');
   await u.agent.post(`/recruitments/${recruitmentId}/applications`);
+  await startTest(ctx, recruitmentId);
   await u.agent.post(`/recruitments/${recruitmentId}/feedbacks`).send({ type: 'BUG', title: '버그', content: '내용' });
 });
 afterAll(async () => {
@@ -106,5 +107,33 @@ describe('AI 분석 (R13, R14)', () => {
     const { agent } = await signup(ctx, 'nope@test.dev');
     expect((await agent.post(`/admin/recruitments/${recruitmentId}/analyses`)).status).toBe(403);
     expect((await agent.get(`/admin/recruitments/${recruitmentId}/analyses/latest`)).status).toBe(403);
+  });
+
+  it('확인 완료를 누르면 종료, 다시 분석하면 분석 완료로 돌아간다', async () => {
+    fakeGpt.mode = 'ok';
+    const none = await admin.post(`/admin/recruitments/${emptyId}/analyses/review`);
+    expect(none.status).toBe(400);
+    expect(none.body.message).toBe('확인할 분석이 아직 없어요.');
+
+    const { agent } = await signup(ctx, 'nope2@test.dev');
+    expect((await agent.post(`/admin/recruitments/${recruitmentId}/analyses/review`)).status).toBe(403);
+
+    // 피드백 마감 전 분석은 단계를 바꾸지 않는다
+    expect((await admin.get(`/admin/recruitments/${recruitmentId}`)).body.stage).toBe('TESTING');
+    await endFeedback(ctx, recruitmentId);
+    expect((await admin.get(`/admin/recruitments/${recruitmentId}`)).body.stage).toBe('ANALYZED');
+
+    const reviewed = await admin.post(`/admin/recruitments/${recruitmentId}/analyses/review`);
+    expect(reviewed.status).toBe(200);
+    expect(reviewed.body.analysisReviewedAt).toBeTruthy();
+    const after = (await admin.get(`/admin/recruitments/${recruitmentId}`)).body;
+    expect(after.stage).toBe('DONE');
+    expect(after.analysisReviewedAt).toBeTruthy();
+    const dash = (await admin.get('/admin/dashboard')).body;
+    expect(dash.recruitments.find((r: { id: number }) => r.id === recruitmentId).stage).toBe('DONE');
+    expect(dash.stageCounts.DONE).toBe(1);
+
+    expect((await admin.post(`/admin/recruitments/${recruitmentId}/analyses`)).status).toBe(201);
+    expect((await admin.get(`/admin/recruitments/${recruitmentId}`)).body.stage).toBe('ANALYZED');
   });
 });
