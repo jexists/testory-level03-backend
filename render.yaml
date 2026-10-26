@@ -26,6 +26,8 @@ services:
         sync: false
       - key: GPT_MODEL
         value: gpt-4o-mini
+      - key: GPT_SEARCH_MODEL
+        value: gpt-4.1-mini
       - key: DEMO_SEED_ENABLED
         value: "true"
       - key: DEMO_PASSWORD

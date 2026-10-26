@@ -106,6 +106,7 @@ test/                                    # API 통합(e2e) 테스트
 | `FRONTEND_URL` | 예 | 허용할 프론트엔드 주소, 쉼표로 여러 개. 예: `https://testory.vercel.app` | 로컬 `http://localhost:3000` | 아니오 |
 | `GPT_API_KEY` | AI 분석에 필요 | OpenAI API 키. **백엔드에서만 사용** | 로컬 `.env`, 운영 Render 환경변수 | **예** |
 | `GPT_MODEL` | 아니오(gpt-4o-mini) | 사용할 모델 이름 | 동일 | 아니오 |
+| `GPT_SEARCH_MODEL` | 아니오(gpt-4.1-mini) | AI 분석 참고자료를 찾는 웹 검색 모델 (OpenAI `web_search` 도구 지원 모델) | 동일 | 아니오 |
 | `PORT` | 아니오(4000) | Render 가 자동 주입 | | 아니오 |
 | `NODE_ENV` | 아니오 | 운영은 `production` | | 아니오 |
 | `DEMO_SEED_ENABLED` | 운영에서 시연 데이터를 쓸 때 | `true` 여야 운영에서 시드·초기화 버튼이 동작 | 로컬은 불필요 | 아니오 |

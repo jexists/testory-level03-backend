@@ -19,6 +19,8 @@ export const envSchema = z.object({
   FRONTEND_URL: z.string().default('http://localhost:3000'),
   GPT_API_KEY: z.string().optional().default(''),
   GPT_MODEL: z.string().default('gpt-4o-mini'),
+  // AI 분석의 참고자료 검색(웹 검색 도구)에 쓰는 모델
+  GPT_SEARCH_MODEL: z.string().default('gpt-4.1-mini'),
   DEMO_SEED_ENABLED: bool,
   DEMO_PASSWORD: z.string().optional().default(''),
 });
