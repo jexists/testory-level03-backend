@@ -60,9 +60,9 @@ export class ApplicationsService {
           os: d.os,
           scope: d.scope,
           deviceModelId: d.deviceModelId,
-          modelName: d.deviceModel?.modelName,
+          modelName: d.deviceModel?.modelName ?? d.modelName,
         }));
-        if (!deviceMatches({ os: user.deviceType, modelId: user.deviceModelId }, conditions)) {
+        if (!deviceMatches({ os: user.deviceType, modelId: user.deviceModelId, modelName: modelText }, conditions)) {
           throw badRequest('DEVICE_NOT_ALLOWED', describeAllowed(conditions));
         }
 

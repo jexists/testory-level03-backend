@@ -28,6 +28,10 @@ export class RecruitmentDevice {
   @JoinColumn({ name: 'device_model_id' })
   deviceModel?: DeviceModel | null;
 
+  /** 목록에 없는 모델을 "기타"로 직접 입력한 이름. deviceModelId 와 둘 중 하나만 채운다. */
+  @Column({ name: 'model_name', type: 'varchar', length: 100, nullable: true })
+  modelName: string | null;
+
   /** 기기별 정원: 이번 범위에서는 항상 비워 둔다. */
   @Column({ name: 'device_capacity', type: 'int', nullable: true })
   deviceCapacity: number | null;

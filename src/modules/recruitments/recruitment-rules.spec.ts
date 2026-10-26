@@ -100,6 +100,25 @@ describe('deviceMatches / describeAllowed (R5)', () => {
     expect(deviceMatches({ os: Os.IOS, modelId: 7 }, conds)).toBe(false);
   });
 
+  it('"기타"로 입력한 모델 조건은 같은 OS 에서 모델명이 같으면(대소문자·공백 무시) 맞는다', () => {
+    const typed = [{ os: Os.ANDROID, scope: DeviceScope.MODEL, deviceModelId: null, modelName: 'Pixel  Fold' }];
+    expect(deviceMatches({ os: Os.ANDROID, modelId: null, modelName: 'pixel fold' }, typed)).toBe(true);
+    expect(deviceMatches({ os: Os.IOS, modelId: null, modelName: 'Pixel Fold' }, typed)).toBe(false);
+    expect(deviceMatches({ os: Os.ANDROID, modelId: 1, modelName: 'Galaxy S24' }, typed)).toBe(false);
+  });
+
+  it('"기타" 모델 조건은 이름이 있어야 하고, 같은 이름을 두 번 넣을 수 없다', () => {
+    expect(() => validateDeviceConditions([{ os: Os.ANDROID, scope: DeviceScope.MODEL, modelName: 'Pixel Fold' }], models)).not.toThrow();
+    expect(msgOf(() => validateDeviceConditions([{ os: Os.ANDROID, scope: DeviceScope.MODEL, modelName: ' ' }], models))).toBe(
+      '모델 목록에서 골라 주세요.',
+    );
+    const dup = [
+      { os: Os.ANDROID, scope: DeviceScope.MODEL, modelName: 'Pixel Fold' },
+      { os: Os.ANDROID, scope: DeviceScope.MODEL, modelName: 'pixel fold' },
+    ];
+    expect(msgOf(() => validateDeviceConditions(dup, models))).toBe('같은 기기 조건을 두 번 넣을 수 없어요.');
+  });
+
   it('조건이 없으면(모든 기기) 직접 입력한 기기도 맞는다', () => {
     expect(deviceMatches({ os: null, modelId: null }, [])).toBe(true);
   });

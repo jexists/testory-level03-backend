@@ -89,8 +89,8 @@ export class RecruitmentsService {
         os: d.os,
         scope: d.scope,
         deviceModelId: d.deviceModelId,
-        modelName: d.deviceModel?.modelName ?? null,
-        label: conditionLabel(d.os, d.scope, d.deviceModel?.modelName ?? null),
+        modelName: d.deviceModel?.modelName ?? d.modelName,
+        label: conditionLabel(d.os, d.scope, d.deviceModel?.modelName ?? d.modelName),
       };
       const list = map.get(d.recruitmentId) ?? [];
       list.push(view);
@@ -193,7 +193,6 @@ export class RecruitmentsService {
       id: r.id,
       title: r.title,
       description: r.description,
-      kind: r.kind,
       capacity: r.capacity,
       startAt: r.startAt,
       endAt: r.endAt,
@@ -329,7 +328,6 @@ export class RecruitmentsService {
         m.getRepository(Recruitment).create({
           title: dto.title,
           description: dto.description,
-          kind: dto.kind,
           capacity: dto.capacity ?? 15,
           startAt: dto.startAt,
           endAt: dto.endAt,
@@ -371,7 +369,6 @@ export class RecruitmentsService {
         {
           title: dto.title,
           description: dto.description,
-          kind: dto.kind,
           capacity,
           startAt: dto.startAt,
           endAt: dto.endAt,
@@ -395,6 +392,7 @@ export class RecruitmentsService {
         os: d.os,
         scope: d.scope,
         deviceModelId: d.scope === DeviceScope.MODEL ? (d.deviceModelId ?? null) : null,
+        modelName: d.scope === DeviceScope.MODEL && d.deviceModelId == null ? (d.modelName ?? null) : null,
         deviceCapacity: null,
       })),
     );

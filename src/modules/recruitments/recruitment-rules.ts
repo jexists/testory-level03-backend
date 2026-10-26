@@ -6,7 +6,12 @@ export interface DeviceConditionInput {
   os: Os;
   scope: DeviceScope;
   deviceModelId?: number | null;
+  /** "기타"로 직접 입력한 모델명 */
+  modelName?: string | null;
 }
+
+/** 직접 입력한 모델명은 대소문자·공백 차이를 무시하고 비교한다. */
+export const normalizeModelName = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
 
 export interface KnownModel {
   id: number;
@@ -19,7 +24,7 @@ export interface KnownModel {
  * R8: 모집글의 기기 조건 검사.
  * - 조건이 없으면 "모든 기기"를 받는다. 같은 조건 중복 금지
  * - 한 OS 를 "전체"로 허용했다면 그 OS 의 특정 모델 조건은 함께 둘 수 없다
- * - 특정 모델 조건은 모델 목록에 있는 모델이어야 하고 OS 가 같아야 한다
+ * - 특정 모델 조건은 모델 목록에서 고르거나("기타") 모델명을 직접 입력한다. 목록 모델은 OS 가 같아야 한다
  * keepModelIds 에 있는 비활성 모델은 (기존 조건 유지용으로) 허용한다.
  */
 export function validateDeviceConditions(
@@ -30,14 +35,18 @@ export function validateDeviceConditions(
   const seen = new Set<string>();
   const allOs = new Set<Os>();
   for (const c of conditions) {
-    const key = c.scope === DeviceScope.ALL ? `${c.os}:ALL` : `${c.os}:MODEL:${c.deviceModelId}`;
+    const typed = c.modelName ? normalizeModelName(c.modelName) : '';
+    const key =
+      c.scope === DeviceScope.ALL ? `${c.os}:ALL` : c.deviceModelId != null ? `${c.os}:MODEL:${c.deviceModelId}` : `${c.os}:NAME:${typed}`;
     if (seen.has(key)) throw badRequest('DEVICE_CONDITION_DUPLICATE', MSG.DEVICE_CONDITION_DUPLICATE);
     seen.add(key);
     if (c.scope === DeviceScope.ALL) {
-      if (c.deviceModelId != null) throw badRequest('DEVICE_CONDITION_INVALID', MSG.INVALID_INPUT);
+      if (c.deviceModelId != null || c.modelName) throw badRequest('DEVICE_CONDITION_INVALID', MSG.INVALID_INPUT);
       allOs.add(c.os);
+    } else if (c.deviceModelId == null) {
+      if (!typed) throw badRequest('DEVICE_PICK_MODEL', MSG.DEVICE_PICK_MODEL);
     } else {
-      if (c.deviceModelId == null) throw badRequest('DEVICE_PICK_MODEL', MSG.DEVICE_PICK_MODEL);
+      if (c.modelName) throw badRequest('DEVICE_CONDITION_INVALID', MSG.INVALID_INPUT);
       const m = models.get(c.deviceModelId);
       if (!m || (!m.isActive && !keepModelIds.has(m.id))) throw badRequest('DEVICE_PICK_MODEL', MSG.DEVICE_PICK_MODEL);
       if (m.os !== c.os) throw badRequest('DEVICE_OS_MISMATCH', MSG.DEVICE_OS_MISMATCH);
@@ -59,13 +68,19 @@ export interface StoredCondition {
 
 /**
  * R5: 조건이 없으면(모든 기기) 누구나, 아니면 내 OS 가 ALL 조건에 있거나 내 모델이 MODEL 조건에 있어야 한다.
- * 직접 입력한 OS·모델("기타")은 null 이라 목록 기준 조건에는 맞지 않는다.
+ * 직접 입력한 모델 조건("기타")은 OS 가 같고 내 모델명이 같으면(대소문자·공백 무시) 맞는다.
+ * 직접 입력한 OS 는 null 이라 어떤 조건에도 맞지 않는다.
  */
-export function deviceMatches(device: { os: Os | null; modelId: number | null }, conditions: StoredCondition[]): boolean {
+export function deviceMatches(
+  device: { os: Os | null; modelId: number | null; modelName?: string | null },
+  conditions: StoredCondition[],
+): boolean {
   if (conditions.length === 0) return true;
-  return conditions.some((c) =>
-    c.scope === DeviceScope.ALL ? c.os === device.os : c.deviceModelId === device.modelId,
-  );
+  return conditions.some((c) => {
+    if (c.scope === DeviceScope.ALL) return c.os === device.os;
+    if (c.deviceModelId != null) return c.deviceModelId === device.modelId;
+    return c.os === device.os && !!c.modelName && !!device.modelName && normalizeModelName(c.modelName) === normalizeModelName(device.modelName);
+  });
 }
 
 /** "이 모집은 Android만 받아요." 같은 거절 문구 */

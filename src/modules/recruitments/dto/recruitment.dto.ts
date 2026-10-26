@@ -12,7 +12,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { DeviceScope, Os, RecruitmentKind } from '../../../common/enums';
+import { DeviceScope, Os } from '../../../common/enums';
 import { MSG } from '../../../common/messages';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -29,6 +29,13 @@ export class DeviceConditionDto {
   @IsOptional()
   @IsInt({ message: MSG.DEVICE_PICK_MODEL })
   deviceModelId?: number | null;
+
+  /** 목록에 없는 모델을 "기타"로 직접 입력한 이름. deviceModelId 와 함께 보내지 않는다. */
+  @IsOptional()
+  @Transform(trim)
+  @IsString({ message: MSG.DEVICE_PICK_MODEL })
+  @MaxLength(100, { message: '모델명은 100자 이하로 써 주세요.' })
+  modelName?: string | null;
 }
 
 export class RecruitmentBodyDto {
@@ -43,10 +50,6 @@ export class RecruitmentBodyDto {
   @IsNotEmpty({ message: '설명을 입력해 주세요.' })
   @MaxLength(5000, { message: '설명은 5000자 이하로 써 주세요.' })
   description: string;
-
-  /** APP_FULL = 앱 전체, FEATURE = 기능별 */
-  @IsEnum(RecruitmentKind, { message: '모집 종류를 골라 주세요.' })
-  kind: RecruitmentKind;
 
   /** 정원 (1~50, 비우면 15) */
   @IsOptional()
