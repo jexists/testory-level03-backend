@@ -4,6 +4,8 @@
 
 - 기획서: [`기획서.md`](./기획서.md) (프론트엔드 저장소의 `기획서.md` 와 같은 내용)
 - 프론트엔드 저장소: `testory-level01-frontend` (이 저장소와 독립)
+- 배포 주소: <https://testory-level01-backend.onrender.com> · Health: <https://testory-level01-backend.onrender.com/health> · API 문서: <https://testory-level01-backend.onrender.com/api/docs>
+- 프론트엔드 배포 주소: <https://testory-level01-frontend.vercel.app>
 - 로컬 주소: <http://localhost:4000> · API 문서(Swagger): <http://localhost:4000/api/docs> · Health: <http://localhost:4000/health>
 
 > ⏱ 무료 서버 환경에서는 일정 시간 동안 요청이 없으면 서버가 일시 중지될 수 있어 첫 접속 시 응답이 느릴 수 있습니다. (Render 무료 웹 서비스는 15분 동안 요청이 없으면 잠들고, 다시 깨어나는 데 약 1분 걸립니다.)
@@ -20,7 +22,7 @@
 | 진행 단계 | 모집 중 → 모집 마감 → 테스트 중 → 피드백 완료 → 분석 완료 → 종료 를 서버가 계산 (테스터에게는 뒤 세 단계를 "피드백 마감"으로 묶음) |
 | 신청 | 신청(신청 당시 기기 복사, **정원이 차면 바로 테스트 시작**), 본인 신청 취소, 내 신청 목록, 관리자용 신청자 조회(피드백 수·정렬). 테스터만 |
 | 피드백 | 유형(버그/개선/칭찬)을 골라 작성(**테스트 중 ~ 피드백 마감일**), 내 피드백, 관리자 피드백(필터·작성자별 정렬) |
-| AI 분석 | 모집글별 GPT 종합 분석 → **버전별 저장**, 이전 버전 조회, 실패 시 저장 안 함, **확인 완료** 표시 |
+| AI 분석 | 모집글별 GPT 종합 분석(**요약 → 웹 참고자료 → 조치 판단** 3단계, 근거 피드백·원문 문장 대조, 열리는 링크만 남김) → **버전별 저장**, 이전 버전 조회, 실패 시 저장 안 함, **확인 완료** 표시, 진행 상황 스트리밍(SSE) |
 | 관리자 | 대시보드용 필터(모집 중·마감 임박·AI 분석 필요 등)와 필터별 개수, 시연 데이터 초기화 |
 
 ## 기술 스택
@@ -64,7 +66,7 @@ test/                                    # API 통합(e2e) 테스트
 | 신청 | `POST /recruitments/:id/applications`, `DELETE /applications/:id`, `GET /me/applications` | 테스터 |
 | 신청자 | `GET /admin/recruitments/:id/applications?sort=feedback_desc` | 관리자 |
 | 피드백 | `POST /recruitments/:id/feedbacks`, `GET /me/feedbacks?recruitmentId=`, `GET /admin/feedbacks`(`recruitmentId`, `type`, `sort=author_count_desc`) | 참여 중 테스터 / 본인 / 관리자 |
-| AI 분석 | `POST·GET /admin/recruitments/:id/analyses`, `GET …/analyses/latest｜:version`, `POST …/analyses/review`(확인 완료) | 관리자 |
+| AI 분석 | `POST·GET /admin/recruitments/:id/analyses`, `POST …/analyses/stream`(진행 상황 SSE), `GET …/analyses/latest｜:version`, `POST …/analyses/review`(확인 완료) | 관리자 |
 | 현황·시연 | `GET /admin/dashboard`(단계별 개수), `POST /admin/demo/reset` | 관리자 |
 
 - 관리자 목록 응답에는 `filterCounts`(전체·모집 중·마감 임박·테스트 중·AI 분석 필요·분석 완료·종료·삭제)와 `stageCounts` 가 함께 옵니다. 프론트 대시보드의 숫자 카드와 필터 칩은 이 값을 씁니다. `GET /admin/dashboard` 는 남아 있지만 지금 프론트는 쓰지 않습니다.
@@ -73,7 +75,7 @@ test/                                    # API 통합(e2e) 테스트
 
 오류는 항상 `{ statusCode, code, message, details? }` 형식이고 `message` 는 화면에 그대로 보여 줄 수 있는 쉬운 한국어입니다.
 
-## 규칙(R1~R16)을 지키는 방법
+## 규칙(R1~R18)을 지키는 방법
 
 | 규칙 | 구현 |
 |---|---|
@@ -136,7 +138,7 @@ npm run start:dev        # http://localhost:4000
 | 관리자 | `admin@testory.demo` | `testory-demo-1234` |
 | 일반 사용자 | `tester01@testory.demo` ~ `tester20@testory.demo` | `testory-demo-1234` |
 
-운영에서는 `DEMO_PASSWORD` 로 지정한 비밀번호가 쓰입니다. 운영 관리자 비밀번호·Secret 은 README 에 적지 않습니다.
+운영(배포 주소)도 `DEMO_PASSWORD=testory-demo-1234` 로 설정해 위 계정으로 로그인할 수 있습니다. 시연 데이터 초기화는 테스터 비밀번호를 `DEMO_PASSWORD` 로 다시 만들고, 관리자 비밀번호는 처음 만들 때 값을 그대로 둡니다.
 
 ## 테스트와 빌드
 
@@ -156,16 +158,31 @@ npm run build     # dist/ 생성
 |---|---|
 | 서비스 종류 | Web Service (Blueprint: `render.yaml`) |
 | Root Directory | 저장소 루트(비움) |
-| Runtime / Node | Node, `NODE_VERSION=22.12.0` |
+| Runtime / Node | Node, `NODE_VERSION=26` (22.12 에서는 NestJS 12 를 불러올 때 `ERR_REQUIRE_CYCLE_MODULE` 로 빌드가 실패함) |
 | Build Command | `npm ci --include=dev && npm run build` |
 | Start Command | `npm run migration:run && npm run start:prod` |
 | Health Check Path | `/health` |
 | 포트 | Render 의 `PORT` 를 사용하고 `0.0.0.0` 에 바인딩 |
 
-1. Render 에서 PostgreSQL 을 만들고 **External Database URL** 을 복사합니다(지역은 웹 서비스와 같게).
-2. 이 저장소를 Blueprint 로 연결하고 `DATABASE_URL`, `FRONTEND_URL`(Vercel 주소), `GPT_API_KEY`, `DEMO_PASSWORD` 를 입력합니다.
+1. Render 에서 PostgreSQL 을 만듭니다(지역은 웹 서비스와 같게). 웹 서비스의 `DATABASE_URL` 에는 **Internal Database URL**, 로컬 `.env` 에는 External Database URL 을 넣습니다.
+2. 이 저장소를 Web Service(또는 Blueprint)로 연결하고 아래 환경변수를 입력합니다.
 3. 첫 배포 때 시작 명령이 마이그레이션을 먼저 실행합니다. 마이그레이션은 새 테이블을 추가하는 방식이라 기존 데이터를 지우지 않습니다. 데이터를 지우거나 바꾸는 마이그레이션을 추가할 때는 배포 전에 따로 검토하세요.
-4. 첫 시연 데이터는 로컬에서 같은 DB 로 `npm run seed` 를 실행하거나, 관리자 로그인 후 "시연 데이터" 화면에서 만들 수 있습니다(운영에서는 `DEMO_SEED_ENABLED=true` 필요). 관리자 계정이 아직 없으면 시드가 만듭니다.
-5. 프론트엔드는 Vercel 의 rewrite 로 이 서버를 같은 오리진처럼 호출하므로 쿠키가 1st-party 로 동작합니다. `FRONTEND_URL` 에는 Vercel 주소(미리보기 주소가 필요하면 쉼표로 추가)를 넣습니다.
+4. 첫 시연 데이터는 로컬에서 같은 DB 로 `npm run seed` 를 실행해 만듭니다(관리자 계정이 아직 없으면 시드가 만듭니다). 이후에는 관리자로 로그인해 사용자 메뉴의 "시연 데이터 초기화"로 다시 채웁니다(운영에서는 `DEMO_SEED_ENABLED=true` 와 `DEMO_PASSWORD` 필요).
+5. 프론트엔드는 Vercel 의 rewrite 로 이 서버를 같은 오리진처럼 호출하므로 쿠키가 1st-party 로 동작합니다. `FRONTEND_URL` 은 Vercel 주소와 **정확히 같아야** 합니다(끝에 `/` 없이). 다르면 로그인을 포함한 모든 변경 요청이 403("허용되지 않은 출처의 요청이에요.")이 됩니다. 미리보기 주소도 쓰려면 쉼표로 추가합니다.
 
-배포 주소: _(배포 후 여기에 입력)_
+| 환경변수 (Render) | 값 |
+|---|---|
+| `NODE_VERSION` | `26` |
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | Render PostgreSQL 의 Internal Database URL |
+| `DATABASE_SCHEMA` | `testory` |
+| `JWT_SECRET` | 랜덤 문자열 (`openssl rand -hex 32`) |
+| `JWT_EXPIRES_IN` | `7d` |
+| `FRONTEND_URL` | `https://testory-level01-frontend.vercel.app` |
+| `GPT_API_KEY` | OpenAI API 키 |
+| `DEMO_SEED_ENABLED` | `true` |
+| `DEMO_PASSWORD` | `testory-demo-1234` |
+
+- 로그인·가입은 IP 당 1분에 10회까지만 받습니다. 넘으면 "요청이 너무 많아요."가 나오고 1분 뒤 다시 됩니다.
+
+배포 주소: <https://testory-level01-backend.onrender.com> (Health: <https://testory-level01-backend.onrender.com/health>)
