@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, SelectQueryBuilder } from 'typeorm';
 import { badRequest, notFound } from '../../common/app-error';
-import { ApplicationStatus, DeviceScope, Os } from '../../common/enums';
+import { ApplicationStatus, DeviceScope, FeedbackType, Os } from '../../common/enums';
 import { MSG } from '../../common/messages';
 import { Application } from '../applications/application.entity';
 import { AiAnalysis } from '../ai-analyses/ai-analysis.entity';
@@ -15,9 +15,11 @@ import {
   computeStage,
   computeStatus,
   defaultFeedbackDueAt,
+  STAGES,
   toPublicStage,
   validateDeviceConditions,
   type KnownModel,
+  type Stage,
 } from './recruitment-rules';
 import { Recruitment } from './recruitment.entity';
 
@@ -113,6 +115,20 @@ export class RecruitmentsService {
     return qb.subQuery().select('MAX(an.createdAt)').from(AiAnalysis, 'an').where('an.recruitmentId = r.id').getQuery();
   }
 
+  /** computeStage 와 같은 규칙을 SQL 로 옮긴 식. 관리자 목록의 단계 필터·단계별 개수에 쓴다. */
+  private stageExpression(qb: SelectQueryBuilder<Recruitment>): string {
+    const participants = this.participantsSubQuery(qb);
+    const latest = `(${this.latestAnalysisSubQuery(qb)})`;
+    return `CASE
+      WHEN now() >= r.feedbackDueAt THEN CASE
+        WHEN ${latest} IS NULL THEN 'FEEDBACK_DONE'
+        WHEN r.analysisReviewedAt IS NOT NULL AND r.analysisReviewedAt >= ${latest} THEN 'DONE'
+        ELSE 'ANALYZED' END
+      WHEN now() >= LEAST(r.startAt, COALESCE(r.testStartedAt, r.startAt)) THEN 'TESTING'
+      WHEN r.isClosed = true OR (${participants}) >= r.capacity THEN 'RECRUIT_CLOSED'
+      ELSE 'RECRUITING' END`;
+  }
+
   private baseListQuery(q: RecruitmentListQueryDto, admin: boolean) {
     const qb = this.ds.getRepository(Recruitment).createQueryBuilder('r');
     const participants = this.participantsSubQuery(qb);
@@ -176,6 +192,31 @@ export class RecruitmentsService {
     const page = q.page ?? 1;
     const limit = q.limit ?? 12;
     const qb = this.baseListQuery(q, admin);
+
+    // 관리자: 단계 탭 숫자는 검색·삭제 조건만 반영하고, 목록은 고른 단계로 거른다.
+    let stageCounts: Record<Stage, number> | undefined;
+    if (admin) {
+      const stage = this.stageExpression(qb);
+      const rows: { stage: Stage; n: string }[] = await qb
+        .clone()
+        .select(stage, 'stage')
+        .addSelect('COUNT(*)', 'n')
+        .groupBy('1')
+        .getRawMany();
+      stageCounts = Object.fromEntries(STAGES.map((s) => [s, 0])) as Record<Stage, number>;
+      for (const row of rows) stageCounts[row.stage] = Number(row.n);
+      const picked = (q as AdminRecruitmentListQueryDto).stage;
+      if (picked) qb.andWhere(`(${stage}) = :stage`, { stage: picked });
+      const bugs = qb
+        .subQuery()
+        .select('COUNT(*)')
+        .from(Feedback, 'fb')
+        .where(`fb.recruitmentId = r.id AND fb.type = '${FeedbackType.BUG}'`)
+        .getQuery();
+      const version = qb.subQuery().select('MAX(av.versionNo)').from(AiAnalysis, 'av').where('av.recruitmentId = r.id').getQuery();
+      qb.addSelect(`(${bugs})::int`, 'bug_count').addSelect(`(${version})`, 'latest_version');
+    }
+
     const total = await qb.clone().getCount();
     const { entities, raw } = await qb
       .orderBy('r.createdAt', 'DESC')
@@ -186,9 +227,15 @@ export class RecruitmentsService {
     const conditions = await this.loadConditions(entities.map((e) => e.id));
     const items = entities.map((r, i) => ({
       ...this.toView(r, Number(raw[i].participants), Number(raw[i].feedback_count), conditions.get(r.id) ?? []),
-      ...(admin ? this.adminFields(r, Number(raw[i].participants), toDate(raw[i].latest_analysis_at)) : {}),
+      ...(admin
+        ? {
+            ...this.adminFields(r, Number(raw[i].participants), toDate(raw[i].latest_analysis_at)),
+            bugCount: Number(raw[i].bug_count),
+            latestAnalysisVersion: raw[i].latest_version == null ? null : Number(raw[i].latest_version),
+          }
+        : {}),
     }));
-    return { items, total, page, limit };
+    return { items, total, page, limit, ...(stageCounts ? { stageCounts } : {}) };
   }
 
   async detail(id: number, admin = false, userId?: number) {
@@ -330,6 +377,19 @@ export class RecruitmentsService {
       .where('id = :id AND deleted_at IS NULL', { id })
       .execute();
     if (!res.affected) throw notFound('RECRUITMENT_NOT_FOUND', MSG.RECRUITMENT_NOT_FOUND);
+  }
+
+  /** 삭제한 글을 되살린다. 삭제되지 않은 글이면 "찾을 수 없는 모집글" */
+  async restore(id: number, ip: string | null) {
+    const res = await this.ds
+      .getRepository(Recruitment)
+      .createQueryBuilder()
+      .update()
+      .set({ deletedAt: null, deletedIp: null, updatedIp: ip })
+      .where('id = :id AND deleted_at IS NOT NULL', { id })
+      .execute();
+    if (!res.affected) throw notFound('RECRUITMENT_NOT_FOUND', MSG.RECRUITMENT_NOT_FOUND);
+    return this.detail(id, true);
   }
 
   async setClosed(id: number, isClosed: boolean, ip: string | null) {

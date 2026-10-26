@@ -14,7 +14,7 @@ import { RecruitmentsService } from './recruitments.service';
 export class AdminRecruitmentsController {
   constructor(private readonly recruitments: RecruitmentsService) {}
 
-  /** 관리자용 목록 (deleted=include|only 로 삭제된 글 보기) */
+  /** 관리자용 목록 (deleted=include|only 로 삭제된 글 보기, stage 로 진행 단계 거르기) */
   @Get()
   list(@Query() q: AdminRecruitmentListQueryDto) {
     return this.recruitments.list(q, true);
@@ -41,6 +41,12 @@ export class AdminRecruitmentsController {
   @HttpCode(204)
   async remove(@Param('id', ParseIntPipe) id: number, @ClientIp() ip: string | null) {
     await this.recruitments.softDelete(id, ip);
+  }
+
+  /** 삭제한 글을 되살린다. 삭제 기록(시각·IP)은 지운다. */
+  @Patch(':id/restore')
+  restore(@Param('id', ParseIntPipe) id: number, @ClientIp() ip: string | null) {
+    return this.recruitments.restore(id, ip);
   }
 
   @Patch(':id/close')

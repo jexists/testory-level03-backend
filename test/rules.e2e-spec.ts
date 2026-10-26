@@ -239,6 +239,52 @@ describe('모집글 등록·수정·삭제 (R1, R8, R10, R11, R12)', () => {
   });
 });
 
+describe('관리자 목록: 복구·단계 필터', () => {
+  it('삭제한 글을 복구하면 다시 목록에 나오고, 삭제 안 된 글은 복구할 수 없다', async () => {
+    const r = await createRecruitment({ title: '복구 테스트 글' });
+    expect((await admin.patch(`/admin/recruitments/${r.id}/restore`)).status).toBe(404);
+    expect((await admin.delete(`/admin/recruitments/${r.id}`)).status).toBe(204);
+    expect((await ctx.http().get(`/recruitments/${r.id}`)).status).toBe(404);
+
+    const res = await admin.patch(`/admin/recruitments/${r.id}/restore`);
+    expect(res.status).toBe(200);
+    expect(res.body.deletedAt).toBeNull();
+    expect(res.body.deletedIp).toBeNull();
+    expect((await ctx.http().get(`/recruitments/${r.id}`)).status).toBe(200);
+    const ids = (await admin.get('/admin/recruitments?q=복구 테스트')).body.items.map((i: { id: number }) => i.id);
+    expect(ids).toContain(r.id);
+  });
+
+  it('stage 필터와 단계별 개수가 계산한 진행 단계와 맞는다', async () => {
+    const open = await createRecruitment({ title: '단계필터 모집' });
+    const closed = await createRecruitment({ title: '단계필터 마감' });
+    expect((await admin.patch(`/admin/recruitments/${closed.id}/close`)).status).toBe(200);
+    const testing = await createRecruitment({ title: '단계필터 테스트' });
+    await startTest(ctx, testing.id);
+    const done = await createRecruitment({ title: '단계필터 피드백' });
+    await endFeedback(ctx, done.id);
+
+    const all = (await admin.get('/admin/recruitments?q=단계필터&limit=50')).body;
+    expect(all.total).toBe(4);
+    const byId = new Map(all.items.map((i: { id: number; stage: string }) => [i.id, i.stage]));
+    expect(byId.get(open.id)).toBe('RECRUITING');
+    expect(byId.get(closed.id)).toBe('RECRUIT_CLOSED');
+    expect(byId.get(testing.id)).toBe('TESTING');
+    expect(byId.get(done.id)).toBe('FEEDBACK_DONE');
+    expect(all.stageCounts).toEqual({ RECRUITING: 1, RECRUIT_CLOSED: 1, TESTING: 1, FEEDBACK_DONE: 1, ANALYZED: 0, DONE: 0 });
+    expect(all.items[0]).toHaveProperty('bugCount', 0);
+    expect(all.items[0]).toHaveProperty('latestAnalysisVersion', null);
+
+    for (const stage of ['RECRUITING', 'RECRUIT_CLOSED', 'TESTING', 'FEEDBACK_DONE']) {
+      const page = (await admin.get(`/admin/recruitments?q=단계필터&stage=${stage}`)).body;
+      expect(page.total).toBe(1);
+      expect(page.items[0].stage).toBe(stage);
+      expect(page.stageCounts).toEqual(all.stageCounts);
+    }
+    expect((await admin.get('/admin/recruitments?stage=WRONG')).status).toBe(400);
+  });
+});
+
 describe('신청·취소 (R1~R6, R15)', () => {
   it('내 기기가 조건에 맞아야 신청할 수 있다 (R5)', async () => {
     const r = await createRecruitment({ devices: [{ os: 'ANDROID', scope: 'ALL' }] });

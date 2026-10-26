@@ -60,14 +60,17 @@ export class FeedbacksService {
     }));
   }
 
-  /** 관리자: 전체 피드백. 작성자별 피드백 수는 저장하지 않고 COUNT 로 센다. */
+  /**
+   * 관리자: 전체 피드백. 작성자별 피드백 수는 저장하지 않고 COUNT 로 센다.
+   * 모집글 하나를 고르면 그 글이 삭제되었더라도 피드백을 보여 준다(상세 화면용).
+   */
   async listAdmin(q: AdminFeedbackQueryDto) {
     const page = q.page ?? 1;
     const limit = q.limit ?? 20;
     const qb = this.ds
       .getRepository(Feedback)
       .createQueryBuilder('f')
-      .innerJoin(Recruitment, 'r', 'r.id = f.recruitmentId AND r.deletedAt IS NULL')
+      .innerJoin(Recruitment, 'r', q.recruitmentId ? 'r.id = f.recruitmentId' : 'r.id = f.recruitmentId AND r.deletedAt IS NULL')
       .innerJoin(User, 'u', 'u.id = f.userId')
       .addSelect('r.title', 'recruitment_title')
       .addSelect('u.nickname', 'nickname')
