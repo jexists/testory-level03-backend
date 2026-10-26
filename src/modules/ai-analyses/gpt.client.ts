@@ -53,23 +53,48 @@ export class GptClient {
 
   /** 피드백 묶음을 GPT 로 종합 분석한다. 30초 제한, 재시도 없음. 실패하면 예외를 던진다. */
   async analyze(feedbackText: string): Promise<AnalysisResult> {
+    const completion = await this.client(30_000).chat.completions.create(this.request(feedbackText));
+    return this.parse(completion.choices[0]?.message?.content);
+  }
+
+  /**
+   * analyze 와 같은 분석을 스트리밍으로 한다. 모델이 내보내는 JSON 조각을 차례로 내주고,
+   * 끝나면 검증한 결과를 돌려준다. 스트림 전체 60초 제한, signal 로 중간에 끊을 수 있다.
+   */
+  async *analyzeStream(feedbackText: string, signal?: AbortSignal): AsyncGenerator<string, AnalysisResult> {
+    const stream = await this.client(60_000).chat.completions.create({ ...this.request(feedbackText), stream: true }, { signal });
+    let content = '';
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content;
+      if (!delta) continue;
+      content += delta;
+      yield delta;
+    }
+    return this.parse(content);
+  }
+
+  private client(timeout: number) {
     const apiKey = this.config.get('GPT_API_KEY', { infer: true });
     if (!apiKey) throw new GptNotConfiguredError('GPT_API_KEY is not set');
+    return new OpenAI({ apiKey, timeout, maxRetries: 0 });
+  }
 
-    const client = new OpenAI({ apiKey, timeout: 30_000, maxRetries: 0 });
-    const completion = await client.chat.completions.create({
+  private request(feedbackText: string) {
+    return {
       model: this.modelName,
       max_completion_tokens: 1800,
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `<feedback>\n${feedbackText}\n</feedback>` },
+        { role: 'system' as const, content: SYSTEM_PROMPT },
+        { role: 'user' as const, content: `<feedback>\n${feedbackText}\n</feedback>` },
       ],
       response_format: {
-        type: 'json_schema',
+        type: 'json_schema' as const,
         json_schema: { name: 'feedback_analysis', strict: true, schema: JSON_SCHEMA },
       },
-    });
-    const content = completion.choices[0]?.message?.content;
+    };
+  }
+
+  private parse(content: string | null | undefined): AnalysisResult {
     if (!content) throw new Error('empty response from model');
     const parsed = resultSchema.safeParse(JSON.parse(content));
     if (!parsed.success) {

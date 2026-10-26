@@ -21,6 +21,15 @@ const fakeGpt = {
     if (this.mode === 'slow') await new Promise((r) => setTimeout(r, 400));
     return RESULT;
   },
+  /** JSON 을 두 조각으로 나눠 흘려보낸다. */
+  async *analyzeStream() {
+    const result = await this.analyze();
+    const json = JSON.stringify(result);
+    const half = Math.floor(json.length / 2);
+    yield json.slice(0, half);
+    yield json.slice(half);
+    return result;
+  },
 };
 
 let ctx: TestCtx;
@@ -135,5 +144,78 @@ describe('AI 분석 (R13, R14)', () => {
 
     expect((await admin.post(`/admin/recruitments/${recruitmentId}/analyses`)).status).toBe(201);
     expect((await admin.get(`/admin/recruitments/${recruitmentId}`)).body.stage).toBe('ANALYZED');
+  });
+});
+
+/** SSE 본문을 [이벤트 이름, 데이터] 목록으로 읽는다. */
+function readEvents(body: string): [string, unknown][] {
+  return body
+    .split('\n\n')
+    .filter((block) => block.startsWith('event:'))
+    .map((block) => {
+      const [eventLine, dataLine] = block.split('\n');
+      return [eventLine.slice('event: '.length), JSON.parse(dataLine.slice('data: '.length))];
+    });
+}
+
+const postStream = (id: number) =>
+  admin
+    .post(`/admin/recruitments/${id}/analyses/stream`)
+    .buffer(true)
+    .parse((res, cb) => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk: string) => (text += chunk));
+      res.on('end', () => cb(null, text));
+    });
+
+describe('AI 분석 스트리밍', () => {
+  it('진행 단계와 모델 출력 조각을 흘려보내고, 끝나면 새 버전을 저장한다', async () => {
+    fakeGpt.mode = 'ok';
+    const before = (await admin.get(`/admin/recruitments/${recruitmentId}/analyses`)).body.length;
+    const res = await postStream(recruitmentId);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/event-stream');
+
+    const events = readEvents(res.body as string);
+    expect(events.map(([e]) => e)).toEqual(['status', 'status', 'delta', 'delta', 'status', 'done']);
+    expect(events[0][1]).toEqual({ step: 'reading', feedbackCount: 1 });
+    const streamed = events.filter(([e]) => e === 'delta').map(([, d]) => (d as { text: string }).text).join('');
+    expect(JSON.parse(streamed)).toEqual(RESULT);
+    expect(events.at(-1)?.[1]).toMatchObject({ versionNo: before + 1, result: RESULT });
+
+    const list = (await admin.get(`/admin/recruitments/${recruitmentId}/analyses`)).body;
+    expect(list).toHaveLength(before + 1);
+  });
+
+  it('GPT 가 실패하면 error 이벤트를 보내고 새 버전을 만들지 않는다', async () => {
+    fakeGpt.mode = 'fail';
+    const before = (await admin.get(`/admin/recruitments/${recruitmentId}/analyses`)).body.length;
+    const res = await postStream(recruitmentId);
+    const events = readEvents(res.body as string);
+    expect(events.at(-1)).toEqual(['error', { code: 'ANALYSIS_FAILED', message: 'AI 분석에 실패했어요. 잠시 뒤 다시 시도해 주세요.' }]);
+    expect((await admin.get(`/admin/recruitments/${recruitmentId}/analyses`)).body).toHaveLength(before);
+    fakeGpt.mode = 'ok';
+
+    // 실패한 뒤에도 잠금이 풀려 다시 분석할 수 있다
+    expect(readEvents((await postStream(recruitmentId)).body as string).at(-1)?.[0]).toBe('done');
+  });
+
+  it('시작 전 검사에 걸리면 스트림을 열지 않고 JSON 오류로 돌려준다', async () => {
+    const empty = await admin.post(`/admin/recruitments/${emptyId}/analyses/stream`);
+    expect(empty.status).toBe(400);
+    expect(empty.body.message).toBe('분석할 피드백이 아직 없어요.');
+
+    fakeGpt.mode = 'slow';
+    const [a, b] = await Promise.all([
+      postStream(recruitmentId),
+      (async () => {
+        await new Promise((r) => setTimeout(r, 100));
+        return admin.post(`/admin/recruitments/${recruitmentId}/analyses/stream`);
+      })(),
+    ]);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(409);
+    fakeGpt.mode = 'ok';
   });
 });
