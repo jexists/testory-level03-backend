@@ -2,7 +2,7 @@
 
 베타테스터 모집·피드백 관리 서비스 **Testory** 의 API 서버입니다. 모집글 하나에 신청과 피드백을 모으고, 정원·기기 조건·취소 같은 **핵심 규칙은 모두 이 서버가 최종적으로 검사**합니다. (화면에서 막아 둔 규칙도 API 를 직접 호출해 우회할 수 없습니다.)
 
-- 기획서: [`기획서.md`](./기획서.md) (원본은 `docs/03_기획서.md` 와 동일)
+- 기획서: [`기획서.md`](./기획서.md) (프론트엔드 저장소의 `기획서.md` 와 같은 내용)
 - 프론트엔드 저장소: `testory-level01-frontend` (이 저장소와 독립)
 - 로컬 주소: <http://localhost:4000> · API 문서(Swagger): <http://localhost:4000/api/docs> · Health: <http://localhost:4000/health>
 
@@ -15,12 +15,13 @@
 | 구분 | 기능 |
 |---|---|
 | 인증 | 회원가입(내 기기 포함, 일반 사용자만), 로그인/로그아웃(httpOnly 쿠키 JWT) |
-| 내 정보 | 내 정보, **마이페이지에서만** 기기 수정, 기기 모델 선택 목록 |
-| 모집글 | 목록(기기·상태 필터, 제목 검색), 상세, 관리자 등록·수정·**Soft Delete**·마감/마감 해제, IP 자동 기록 |
-| 신청 | 신청(신청 당시 기기 복사), 본인 신청 취소, 내 신청 목록, 관리자용 신청자 조회(피드백 수·정렬) |
-| 피드백 | 유형(버그/개선/칭찬)을 골라 작성, 내 피드백, 관리자 전체 피드백(필터·작성자별 정렬) |
-| AI 분석 | 모집글별 GPT 종합 분석 → **버전별 저장**, 이전 버전 조회, 실패 시 저장 안 함 |
-| 관리자 | 현황 숫자 3개, 시연 데이터 초기화 |
+| 내 정보 | 내 정보, **마이페이지에서만** 기기 수정, 기기 모델 선택 목록. 목록에 없는 OS·모델은 "기타"로 직접 입력 |
+| 모집글 | 목록(기기·상태 필터, 제목 검색), 상세, 관리자 등록·수정·**Soft Delete**·**복구**·마감/마감 해제, IP 자동 기록, 피드백 마감일, 기기 조건 없음 = 모든 기기 |
+| 진행 단계 | 모집 중 → 모집 마감 → 테스트 중 → 피드백 완료 → 분석 완료 → 종료 를 서버가 계산 (테스터에게는 뒤 세 단계를 "피드백 마감"으로 묶음) |
+| 신청 | 신청(신청 당시 기기 복사, **정원이 차면 바로 테스트 시작**), 본인 신청 취소, 내 신청 목록, 관리자용 신청자 조회(피드백 수·정렬). 테스터만 |
+| 피드백 | 유형(버그/개선/칭찬)을 골라 작성(**테스트 중 ~ 피드백 마감일**), 내 피드백, 관리자 피드백(필터·작성자별 정렬) |
+| AI 분석 | 모집글별 GPT 종합 분석 → **버전별 저장**, 이전 버전 조회, 실패 시 저장 안 함, **확인 완료** 표시 |
+| 관리자 | 대시보드용 필터(모집 중·마감 임박·AI 분석 필요 등)와 필터별 개수, 시연 데이터 초기화 |
 
 ## 기술 스택
 
@@ -47,7 +48,7 @@ test/                                    # API 통합(e2e) 테스트
 
 - 로그인하면 서버가 **httpOnly 쿠키**(`testory_token`, SameSite=Lax, 운영에서는 Secure)로 JWT 를 내려줍니다. `Authorization: Bearer` 도 받습니다(Swagger·테스트용).
 - 전역 `AuthGuard` 가 **요청마다 DB 에서 사용자와 role 을 다시 읽습니다.** 토큰이나 요청 본문의 role·userId 는 믿지 않습니다.
-- `@Public()` 이 아닌 API 는 로그인이 필요하고, `@Roles(ADMIN)` 이면 관리자만 호출할 수 있습니다. 취소는 본인 신청만 가능합니다.
+- `@Public()` 이 아닌 API 는 로그인이 필요하고, `@Roles(ADMIN)` 이면 관리자만, `@Roles(USER)` 이면 테스터만 호출할 수 있습니다. 신청·취소·피드백 작성·내 신청·내 피드백은 테스터 전용이고, 취소는 본인 신청만 가능합니다.
 - 변경 요청(POST/PATCH/DELETE)은 `Origin` 이 `FRONTEND_URL` 에 없으면 거절하고, 로그인·가입은 요청 횟수를 제한합니다.
 - 비밀번호는 bcrypt 로 해시해 저장합니다.
 
@@ -59,12 +60,16 @@ test/                                    # API 통합(e2e) 테스트
 | 인증 | `POST /auth/signup`, `POST /auth/login`, `POST /auth/logout` | 누구나 |
 | 내 정보 | `GET /me`, `PATCH /me/device`, `GET /device-models?os=` | 로그인 / 본인 / 누구나 |
 | 모집글 | `GET /recruitments`(`os`,`status`,`q`,`page`,`limit`), `GET /recruitments/:id` | 누구나 |
-| 모집글 관리 | `GET·POST /admin/recruitments`, `GET·PATCH·DELETE /admin/recruitments/:id`, `PATCH …/:id/close`, `PATCH …/:id/reopen` | 관리자 |
+| 모집글 관리 | `GET·POST /admin/recruitments`(`deleted`=exclude·include·only, `stage`, `filter`, `os`, `status`, `q`, `page`, `limit`), `GET·PATCH·DELETE /admin/recruitments/:id`, `PATCH …/:id/close`, `PATCH …/:id/reopen`, `PATCH …/:id/restore` | 관리자 |
 | 신청 | `POST /recruitments/:id/applications`, `DELETE /applications/:id`, `GET /me/applications` | 테스터 |
 | 신청자 | `GET /admin/recruitments/:id/applications?sort=feedback_desc` | 관리자 |
-| 피드백 | `POST /recruitments/:id/feedbacks`, `GET /me/feedbacks`, `GET /admin/feedbacks` | 참여 중 테스터 / 본인 / 관리자 |
-| AI 분석 | `POST·GET /admin/recruitments/:id/analyses`, `GET …/analyses/latest｜:version` | 관리자 |
-| 현황·시연 | `GET /admin/dashboard`, `POST /admin/demo/reset` | 관리자 |
+| 피드백 | `POST /recruitments/:id/feedbacks`, `GET /me/feedbacks?recruitmentId=`, `GET /admin/feedbacks`(`recruitmentId`, `type`, `sort=author_count_desc`) | 참여 중 테스터 / 본인 / 관리자 |
+| AI 분석 | `POST·GET /admin/recruitments/:id/analyses`, `GET …/analyses/latest｜:version`, `POST …/analyses/review`(확인 완료) | 관리자 |
+| 현황·시연 | `GET /admin/dashboard`(단계별 개수), `POST /admin/demo/reset` | 관리자 |
+
+- 관리자 목록 응답에는 `filterCounts`(전체·모집 중·마감 임박·테스트 중·AI 분석 필요·분석 완료·종료·삭제)와 `stageCounts` 가 함께 옵니다. 프론트 대시보드의 숫자 카드와 필터 칩은 이 값을 씁니다. `GET /admin/dashboard` 는 남아 있지만 지금 프론트는 쓰지 않습니다.
+- `filter` 기준: 마감 임박 = 모집 중이면서 모집 마감일이 7일 안이거나 남은 자리가 1명, AI 분석 필요 = 피드백 마감이 지났고 피드백이 있는데 분석이 없음, 종료 = 확인 완료했거나 피드백 0건으로 피드백 마감이 지남, 삭제 = 삭제된 글만.
+- `PATCH …/:id/restore` 는 삭제한 글을 되살립니다. `deleted_at`·`deleted_ip` 를 **비우고** 요청 IP 를 `updated_ip` 에 기록하므로 이전 삭제 기록은 남지 않습니다. 삭제되지 않은 글이면 404 입니다.
 
 오류는 항상 `{ statusCode, code, message, details? }` 형식이고 `message` 는 화면에 그대로 보여 줄 수 있는 쉬운 한국어입니다.
 
@@ -73,19 +78,21 @@ test/                                    # API 통합(e2e) 테스트
 | 규칙 | 구현 |
 |---|---|
 | R1 정원 1~50 / 동시 신청 | DTO 검증 + DB `CHECK` + 모집글 행 잠금(`FOR UPDATE`) 트랜잭션 안에서 인원 확인 |
-| R2 자동 마감 | 상태를 저장하지 않고 `관리자 마감 / 정원 참 / 시작됨`으로 계산 (취소하면 다시 모집 중) |
+| R2 자동 마감 | 상태를 저장하지 않고 `관리자 마감 / 정원 참 / 시작됨`으로 계산. 신청으로 정원이 차면(또는 시작 전 정원을 참여자 수만큼 줄이면) 같은 트랜잭션에서 `test_started_at` 을 기록해 **바로 테스트를 시작** |
 | R3 중복 신청 금지 | 서비스 검사 + 부분 유니크 인덱스(`status='APPLIED'`) |
-| R4 시작 후 신청·취소 금지 | 잠금 트랜잭션 안에서 시각 확인 |
-| R5/R6 기기 조건·복사 | 신청 시 서버가 내 정보의 기기를 읽어 조건과 비교하고 신청 표에 복사 (요청의 기기 값은 무시) |
-| R7 기기 수정 | `PATCH /me/device` 만 가능, 목록의 모델·OS 일치 확인 |
-| R8 기기 조건 겹침 금지 | 서비스 검사 + 부분 유니크 인덱스 |
-| R9 피드백 | 참여 중인 사람만, 유형 필수 |
+| R4 시작 후 신청·취소 금지 | 잠금 트랜잭션 안에서 시각 확인. 시작 시각 = `start_at` 과 `test_started_at` 중 빠른 쪽 |
+| R5/R6 기기 조건·복사 | 신청 시 서버가 내 정보의 기기를 읽어 조건과 비교하고 신청 표에 복사 (요청의 기기 값은 무시). 조건이 없으면 모든 기기, 직접 입력한 모델은 OS 와 모델명(대소문자·공백 무시)으로 비교, 직접 입력한 OS 는 모든 기기 모집에만 맞음 |
+| R7 기기 수정 | `PATCH /me/device` 만 가능, 목록의 모델·OS 일치 확인. "기타"는 `deviceType=OTHER` + `deviceOsName`, 또는 `deviceModelName` 으로 받고 DB `CHECK` 로 고른 값·입력한 값을 동시에 못 둠 |
+| R8 기기 조건 겹침 금지 | 서비스 검사 + 부분 유니크 인덱스 + `CHECK`(특정 모델 조건은 `device_model_id`·`model_name` 중 하나만). 빈 배열 = 모든 기기 |
+| R9 피드백 | 참여 중인 사람만, 테스트 시작 ~ `feedback_due_at` 사이만, 유형 필수. `feedback_due_at >= end_at` 은 DB `CHECK` 로도 막음 |
 | R10 정원 축소 | 잠금 트랜잭션 안에서 현재 참여자 수와 비교 |
-| R11 Soft Delete | `deleted_at/deleted_ip` 만 기록, 모든 사용자 조회·신청·피드백·현황에서 제외 |
-| R12 IP 기록 | `trust proxy` 설정 후 서버가 요청에서 읽음 |
-| R13/R14 AI 분석 | 피드백 0건이면 GPT 미호출, 성공 시에만 `MAX(version_no)+1` 저장, 서버 단위 중복 호출 방지, DB 트리거로 수정·삭제 차단 |
-| R15 관리자 전용 | 전역 가드 + `@Roles` |
+| R11 Soft Delete·복구 | `deleted_at/deleted_ip` 만 기록, 모든 사용자 조회·신청·피드백·분석 실행·현황에서 제외. 복구는 두 칸을 비우고 `updated_ip` 기록 |
+| R12 IP 기록 | `trust proxy` 설정 후 서버가 요청에서 읽음 (수정·마감·마감 해제·복구는 `updated_ip`) |
+| R13/R14 AI 분석 | 피드백 0건이면 GPT 미호출, 키가 없으면 503 안내, 성공 시에만 `MAX(version_no)+1` 저장, 서버 단위 중복 호출 방지, DB 트리거로 수정·삭제 차단 |
+| R15 역할 | 전역 가드 + `@Roles(ADMIN｜USER)` |
 | R16 시연 초기화 | PostgreSQL advisory lock (`pg_try_advisory_lock`), 실행 중이면 409 |
+| R17 진행 단계 | `computeStage()`(응답용)와 같은 규칙의 SQL `CASE` 식(필터·개수용)으로 계산, 저장하지 않음 |
+| R18 분석 확인 완료 | 분석이 있을 때만 `analysis_reviewed_at` 기록. 최신 분석 시각보다 늦으면 "종료" |
 
 ## 환경변수
 
@@ -113,13 +120,13 @@ npm ci
 cp .env.example .env     # DATABASE_URL, JWT_SECRET 등을 채우기
 npm run build
 npm run migration:run    # 스키마와 기기 모델 기본 목록 생성 (데이터를 지우지 않음)
-npm run seed             # 시연 데이터 생성 (관리자 1, 테스터 20, 모집글 5, 피드백 30, AI 분석 2)
+npm run seed             # 시연 데이터 생성 (관리자 1, 테스터 20, 모집글 10(삭제 1 포함), 피드백 36, AI 분석 3)
 npm run start:dev        # http://localhost:4000
 ```
 
 - 마이그레이션은 **아직 실행하지 않은 것만** 순서대로 실행하며 `synchronize` 는 쓰지 않습니다. 실행 전 `src/database/migrations/` 의 SQL 을 확인하세요. 현재 상태는 `npm run migration:show`.
 - `npm run seed` / 관리자 화면의 "시연 데이터 초기화"는 **테스터·모집글·신청·피드백·AI 분석을 지우고 다시 만듭니다.** 관리자 계정과 기기 모델 목록은 남깁니다. 운영(`NODE_ENV=production`)에서는 `DEMO_SEED_ENABLED=true` 와 `DEMO_PASSWORD` 를 직접 정했을 때만 동작합니다.
-- 날짜는 실행 시점 기준으로 계산하므로 언제 눌러도 마감/진행/미래 상태가 그대로 나옵니다.
+- 날짜는 실행 시점 기준으로 계산하므로 언제 눌러도 같은 진행 단계(모집 중·마감 임박·모집 마감·테스트 중·AI 분석 필요·분석 완료·종료·삭제)가 그대로 나옵니다. 모집글별 시연 목적은 기획서 9장에 있습니다.
 
 ### 데모 계정 (시연 데이터에서 만들어지는 가짜 계정)
 
