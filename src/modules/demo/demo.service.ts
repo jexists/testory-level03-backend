@@ -11,6 +11,7 @@ import { AiAnalysis } from '../ai-analyses/ai-analysis.entity';
 import { Application } from '../applications/application.entity';
 import { Feedback } from '../feedbacks/feedback.entity';
 import { RecruitmentDevice } from '../recruitments/recruitment-device.entity';
+import { defaultFeedbackDueAt } from '../recruitments/recruitment-rules';
 import { Recruitment } from '../recruitments/recruitment.entity';
 import { DeviceModel } from '../users/device-model.entity';
 import { User } from '../users/user.entity';
@@ -119,6 +120,7 @@ export class DemoService {
 
     const recruitments: Recruitment[] = [];
     for (const d of DEMO_RECRUITMENTS) {
+      const endAt = new Date(now + d.endInDays * DAY);
       const r = await m.getRepository(Recruitment).save(
         m.getRepository(Recruitment).create({
           title: d.title,
@@ -126,7 +128,10 @@ export class DemoService {
           kind: d.kind,
           capacity: d.capacity,
           startAt: new Date(now + d.startInDays * DAY),
-          endAt: new Date(now + d.endInDays * DAY),
+          endAt,
+          feedbackDueAt: defaultFeedbackDueAt(endAt),
+          testStartedAt: d.filledDaysAgo != null ? new Date(now - d.filledDaysAgo * DAY) : null,
+          analysisReviewedAt: null,
           isClosed: d.isClosed ?? false,
           createdBy: admin.id,
           createdIp: d.ip,
@@ -146,7 +151,7 @@ export class DemoService {
         })),
       );
 
-      const startedAgo = Math.max(-d.startInDays, 0) + 1;
+      const startedAgo = Math.max(-d.startInDays, d.filledDaysAgo ?? 0, 0) + 1;
       const apps = [
         ...(d.cancelled ?? []).map((idx, n) => ({ idx, status: ApplicationStatus.CANCELLED, offset: n })),
         ...d.applicants.map((idx, n) => ({ idx, status: ApplicationStatus.APPLIED, offset: n + 1 })),
@@ -168,15 +173,19 @@ export class DemoService {
       );
     }
 
+    // 피드백 마감이 지난 글의 피드백은 마감 전에 쓴 것으로 만든다.
     await m.getRepository(Feedback).insert(
-      DEMO_FEEDBACKS.map((f, i) => ({
-        recruitmentId: recruitments[f.recruitmentIndex].id,
-        userId: testers[f.tester].id,
-        type: f.type,
-        title: f.title,
-        content: f.content,
-        createdAt: new Date(now - f.daysAgo * DAY - i * 60_000),
-      })),
+      DEMO_FEEDBACKS.map((f, i) => {
+        const base = Math.min(now, recruitments[f.recruitmentIndex].feedbackDueAt.getTime() - 3_600_000);
+        return {
+          recruitmentId: recruitments[f.recruitmentIndex].id,
+          userId: testers[f.tester].id,
+          type: f.type,
+          title: f.title,
+          content: f.content,
+          createdAt: new Date(base - f.daysAgo * DAY - i * 60_000),
+        };
+      }),
     );
 
     const alarm = recruitments[1];

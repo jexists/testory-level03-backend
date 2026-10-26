@@ -34,9 +34,11 @@ export interface DemoRecruitment {
   description: string;
   kind: RecruitmentKind;
   capacity: number;
-  /** 시작일: 오늘 기준 며칠 뒤 (음수는 이미 시작) */
+  /** 시작일(모집 마감일): 오늘 기준 며칠 뒤 (음수는 이미 시작) */
   startInDays: number;
   endInDays: number;
+  /** 정원이 차서 테스트가 일찍 시작된 날: 오늘 기준 며칠 전 */
+  filledDaysAgo?: number;
   isClosed?: boolean;
   devices: { os: Os; scope: 'ALL' | 'MODEL'; model?: string }[];
   /** 신청자: 테스터 번호(0부터). 순서대로 신청한 것으로 만든다. */
@@ -53,8 +55,9 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
       '하루칸 1.0 출시 전, 앱 전체를 일주일 이상 직접 써 보실 테스터를 모십니다. 일정 등록부터 알림, 공유까지 평소처럼 써 보시고 불편했던 점을 알려 주세요.',
     kind: RecruitmentKind.APP_FULL,
     capacity: 15,
-    startInDays: -3,
-    endInDays: 11,
+    startInDays: 4,
+    endInDays: 18,
+    filledDaysAgo: 3,
     devices: [
       { os: Os.ANDROID, scope: 'ALL' },
       { os: Os.IOS, scope: 'ALL' },
@@ -69,8 +72,8 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
       '일정 알림(시간 지정, 반복 알림, 방해 금지 시간)을 써 보고 알림이 제때 오는지, 설정이 이해되는지 알려 주세요.',
     kind: RecruitmentKind.FEATURE,
     capacity: 20,
-    startInDays: -2,
-    endInDays: 12,
+    startInDays: -16,
+    endInDays: -6,
     devices: [
       { os: Os.ANDROID, scope: 'ALL' },
       { os: Os.IOS, scope: 'ALL' },
@@ -109,9 +112,8 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
     description: '새로 바뀐 월간·주간 캘린더 화면을 써 보는 iOS 전용 테스트입니다. 관리자가 모집을 먼저 마감했어요.',
     kind: RecruitmentKind.FEATURE,
     capacity: 15,
-    startInDays: 7,
-    endInDays: 21,
-    isClosed: true,
+    startInDays: -12,
+    endInDays: -4,
     devices: [{ os: Os.IOS, scope: 'ALL' }],
     applicants: [1, 3, 5, 7, 9],
     ip: '203.0.113.15',

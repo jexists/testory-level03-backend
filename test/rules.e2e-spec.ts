@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestApp, insertAdmin, login, modelId, PASSWORD, recruitmentBody, signup, type TestCtx } from './helpers';
+import { createTestApp, endFeedback, insertAdmin, login, modelId, PASSWORD, recruitmentBody, signup, startTest, type TestCtx } from './helpers';
 
 const DAY = 86_400_000;
 let ctx: TestCtx;
@@ -225,9 +225,11 @@ describe('모집글 등록·수정·삭제 (R1, R8, R10, R11, R12)', () => {
     expect((await agent.post(`/recruitments/${r.id}/feedbacks`).send({ type: 'BUG', title: 'a', content: 'b' })).status).toBe(404);
 
     const after = (await admin.get('/admin/dashboard')).body;
-    expect(after.participants).toBe(before.participants - 1);
-    expect(after.feedbacks).toBe(before.feedbacks - 1);
-    expect(after.bugs).toBe(before.bugs - 1);
+    const ids = (d: { recruitments: { id: number }[] }) => d.recruitments.map((x) => x.id);
+    expect(ids(before)).toContain(r.id);
+    expect(ids(after)).not.toContain(r.id);
+    expect(after.counts.recruiting).toBe(before.counts.recruiting - 1);
+    expect(after.stageCounts.RECRUITING).toBe(before.stageCounts.RECRUITING - 1);
 
     const row = (await ctx.ds.query(`SELECT deleted_at, deleted_ip FROM "${ctx.schema}"."recruitments" WHERE id = $1`, [r.id]))[0];
     expect(row.deleted_at).toBeTruthy();
@@ -305,29 +307,46 @@ describe('신청·취소 (R1~R6, R15)', () => {
     expect(rows.map((x: { status: string }) => x.status)).toEqual(['CANCELLED', 'APPLIED']);
   });
 
-  it('정원이 차면 거절하고 자동 마감으로 보이며, 취소하면 다시 모집 중이 된다 (R1, R2)', async () => {
+  it('정원이 차면 자동 마감되고 테스트가 바로 시작되어, 더 신청하거나 취소할 수 없다 (R1, R2)', async () => {
     const r = await createRecruitment({ capacity: 2 });
     const a = await signup(ctx, 'full1@test.dev');
     const b = await signup(ctx, 'full2@test.dev');
     const c = await signup(ctx, 'full3@test.dev');
     const first = await a.agent.post(`/recruitments/${r.id}/applications`);
+    expect(first.body.canCancel).toBe(true);
     expect((await b.agent.post(`/recruitments/${r.id}/applications`)).status).toBe(201);
     const over = await c.agent.post(`/recruitments/${r.id}/applications`);
-    expect(over.status).toBe(409);
-    expect(over.body.message).toBe('자리가 모두 찼어요.');
-    expect((await ctx.http().get(`/recruitments/${r.id}`)).body).toMatchObject({ status: 'CLOSED', closedReason: 'FULL', remaining: 0 });
-    await a.agent.delete(`/applications/${first.body.id}`);
-    expect((await ctx.http().get(`/recruitments/${r.id}`)).body).toMatchObject({ status: 'OPEN', remaining: 1 });
-    expect((await c.agent.post(`/recruitments/${r.id}/applications`)).status).toBe(201);
+    expect(over.status).toBe(400);
+    expect(over.body.message).toBe('테스트가 이미 시작되어 신청할 수 없어요.');
+    const detail = (await ctx.http().get(`/recruitments/${r.id}`)).body;
+    expect(detail).toMatchObject({ status: 'CLOSED', closedReason: 'FULL', remaining: 0, phase: 'ONGOING', stage: 'TESTING' });
+    expect(detail.testStartedAt).toBeTruthy();
+    const cancel = await a.agent.delete(`/applications/${first.body.id}`);
+    expect(cancel.status).toBe(400);
+    expect(cancel.body.message).toBe('테스트가 이미 시작되어 취소할 수 없어요.');
+    // 시작일 전이라도 테스트 중이므로 피드백을 쓸 수 있다
+    expect((await a.agent.post(`/recruitments/${r.id}/feedbacks`).send({ type: 'BUG', title: 't', content: 'c' })).status).toBe(201);
+    expect((await admin.get(`/admin/recruitments/${r.id}`)).body.stage).toBe('TESTING');
+  });
+
+  it('정원이 차기 전에는 취소하면 자리가 다시 난다', async () => {
+    const r = await createRecruitment({ capacity: 3 });
+    const a = await signup(ctx, 'seat1@test.dev');
+    const app = await a.agent.post(`/recruitments/${r.id}/applications`);
+    expect((await a.agent.delete(`/applications/${app.body.id}`)).status).toBe(200);
+    expect((await ctx.http().get(`/recruitments/${r.id}`)).body).toMatchObject({ status: 'OPEN', remaining: 3, stage: 'RECRUITING' });
   });
 
   it('동시에 몰려도 정원을 넘지 않는다 (R1)', async () => {
     const r = await createRecruitment({ capacity: 3 });
-    const users = await Promise.all(Array.from({ length: 8 }, (_, i) => signup(ctx, `race${i}@test.dev`)));
+    // 가입은 차례로 한다(supertest 가 같은 서버를 동시에 여러 번 listen 하면 가끔 실패한다). 몰리는 건 신청뿐이다.
+    const users = [];
+    for (let i = 0; i < 8; i++) users.push(await signup(ctx, `race${i}@test.dev`));
     const results = await Promise.all(users.map((u) => u.agent.post(`/recruitments/${r.id}/applications`)));
     const ok = results.filter((x) => x.status === 201).length;
     expect(ok).toBe(3);
-    expect(results.filter((x) => x.status === 409).every((x) => x.body.message === '자리가 모두 찼어요.')).toBe(true);
+    // 정원이 차면 테스트가 바로 시작되므로 늦은 신청은 "자리 없음" 또는 "이미 시작"으로 거절된다
+    expect(results.filter((x) => x.status !== 201).every((x) => x.status === 409 || x.status === 400)).toBe(true);
     const [{ n }] = await ctx.ds.query(`SELECT COUNT(*)::int AS n FROM "${ctx.schema}"."applications" WHERE recruitment_id = $1 AND status = 'APPLIED'`, [r.id]);
     expect(n).toBe(3);
   });
@@ -380,6 +399,7 @@ describe('피드백 (R9)', () => {
     const member = await signup(ctx, 'fb1@test.dev');
     const outsider = await signup(ctx, 'fb2@test.dev');
     await member.agent.post(`/recruitments/${r.id}/applications`);
+    await startTest(ctx, r.id);
 
     const denied = await outsider.agent.post(`/recruitments/${r.id}/feedbacks`).send({ type: 'BUG', title: 't', content: 'c' });
     expect(denied.status).toBe(403);
@@ -404,12 +424,33 @@ describe('피드백 (R9)', () => {
     expect((await u.agent.post(`/recruitments/${r.id}/feedbacks`).send({ type: 'BUG', title: 't', content: 'c' })).status).toBe(403);
   });
 
+  it('피드백은 테스트 중에만 쓸 수 있다 (시작 전·마감 후 거절)', async () => {
+    const r = await createRecruitment();
+    const u = await signup(ctx, 'fbwin@test.dev');
+    await u.agent.post(`/recruitments/${r.id}/applications`);
+    const body = { type: 'BUG', title: 't', content: 'c' };
+    const early = await u.agent.post(`/recruitments/${r.id}/feedbacks`).send(body);
+    expect(early.status).toBe(400);
+    expect(early.body.message).toBe('테스트가 시작되면 피드백을 쓸 수 있어요.');
+    await startTest(ctx, r.id);
+    expect((await u.agent.post(`/recruitments/${r.id}/feedbacks`).send(body)).status).toBe(201);
+    await endFeedback(ctx, r.id);
+    const late = await u.agent.post(`/recruitments/${r.id}/feedbacks`).send(body);
+    expect(late.status).toBe(400);
+    expect(late.body.message).toBe('피드백 마감일이 지나 더 쓸 수 없어요.');
+    // 테스터에게는 "피드백 마감", 관리자에게는 "피드백 완료"로 보인다
+    expect((await ctx.http().get(`/recruitments/${r.id}`)).body.stage).toBe('FEEDBACK_CLOSED');
+    expect((await admin.get(`/admin/recruitments/${r.id}`)).body.stage).toBe('FEEDBACK_DONE');
+    expect((await u.agent.get('/me/applications')).body[0].recruitment.stage).toBe('FEEDBACK_CLOSED');
+  });
+
   it('신청자 조회는 피드백 수를 그때그때 세어 많은 순으로 정렬한다', async () => {
     const r = await createRecruitment();
     const quiet = await signup(ctx, 'quiet@test.dev');
     const loud = await signup(ctx, 'loud@test.dev');
     await quiet.agent.post(`/recruitments/${r.id}/applications`);
     await loud.agent.post(`/recruitments/${r.id}/applications`);
+    await startTest(ctx, r.id);
     for (const t of ['BUG', 'PRAISE', 'IMPROVEMENT']) {
       await loud.agent.post(`/recruitments/${r.id}/feedbacks`).send({ type: t, title: t, content: 'c' });
     }
@@ -439,13 +480,17 @@ describe('시연 데이터 초기화 (R16)', () => {
 
     // 관리자 계정은 남고, 시연 데이터가 채워졌다
     const dash = (await admin.get('/admin/dashboard')).body;
-    expect(dash).toMatchObject({ feedbacks: 30 });
     expect(dash.recruitments).toHaveLength(5);
-    const states = (await ctx.http().get('/recruitments?limit=50')).body.items.map((i: { title: string; status: string; closedReason: string | null }) => [i.title, i.closedReason]);
+    expect(dash.recruitments.reduce((n: number, r: { feedbackCount: number }) => n + r.feedbackCount, 0)).toBe(30);
+    expect(dash.counts).toEqual({ recruiting: 2, closingSoon: 1, filledEarly: 1 });
+    expect(dash.stageCounts).toEqual({ RECRUITING: 2, RECRUIT_CLOSED: 0, TESTING: 1, FEEDBACK_DONE: 1, ANALYZED: 1, DONE: 0 });
+    const states = (await ctx.http().get('/recruitments?limit=50')).body.items.map((i: { title: string; stage: string }) => [i.title, i.stage]);
     expect(states).toEqual(
       expect.arrayContaining([
-        ['하루칸 앱 전체 베타 테스트', 'FULL'],
-        ['캘린더 화면 개선 테스트', 'MANUAL'],
+        ['하루칸 앱 전체 베타 테스트', 'TESTING'],
+        ['알림 기능 테스트', 'FEEDBACK_CLOSED'],
+        ['캘린더 화면 개선 테스트', 'FEEDBACK_CLOSED'],
+        ['일정 공유 기능 테스트', 'RECRUITING'],
       ]),
     );
     expect((await login(ctx, 'tester01@testory.demo', 'testory-demo-1234')).get).toBeDefined();
