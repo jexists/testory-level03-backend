@@ -40,6 +40,11 @@ export interface DemoRecruitment {
   /** 정원이 차서 테스트가 일찍 시작된 날: 오늘 기준 며칠 전 */
   filledDaysAgo?: number;
   isClosed?: boolean;
+  /** AI 분석을 확인 완료한 날: 오늘 기준 며칠 전 */
+  analysisReviewedDaysAgo?: number;
+  /** 삭제한 날: 오늘 기준 며칠 전 */
+  deletedDaysAgo?: number;
+  /** 비워 두면 모든 기기를 받는다 */
   devices: { os: Os; scope: 'ALL' | 'MODEL'; model?: string }[];
   /** 신청자: 테스터 번호(0부터). 순서대로 신청한 것으로 만든다. */
   applicants: number[];
@@ -114,9 +119,74 @@ export const DEMO_RECRUITMENTS: DemoRecruitment[] = [
     capacity: 15,
     startInDays: -12,
     endInDays: -4,
+    isClosed: true,
     devices: [{ os: Os.IOS, scope: 'ALL' }],
     applicants: [1, 3, 5, 7, 9],
     ip: '203.0.113.15',
+  },
+  {
+    title: '홈 화면 위젯 테스트',
+    description: '홈 화면에 올리는 오늘 일정 위젯을 써 보는 테스트입니다. 신청자가 충분히 모여 관리자가 시작 전에 모집을 마감했어요.',
+    kind: RecruitmentKind.FEATURE,
+    capacity: 12,
+    startInDays: 7,
+    endInDays: 21,
+    isClosed: true,
+    devices: [
+      { os: Os.ANDROID, scope: 'ALL' },
+      { os: Os.IOS, scope: 'ALL' },
+    ],
+    applicants: [10, 12, 14, 16],
+    ip: '203.0.113.16',
+  },
+  {
+    title: '일정 검색 기능 테스트',
+    description: '지난 일정과 메모를 검색해 보는 테스트입니다. 정원은 다 차지 않았지만 시작일이 지나 테스트가 진행 중이에요.',
+    kind: RecruitmentKind.FEATURE,
+    capacity: 20,
+    startInDays: -3,
+    endInDays: 11,
+    devices: [],
+    applicants: [13, 15, 16, 17, 18, 19],
+    ip: '203.0.113.17',
+  },
+  {
+    title: '온보딩 화면 개선 테스트',
+    description: '처음 실행할 때 나오는 안내 화면을 새로 만들었어요. 끝까지 따라가 보고 이해하기 어려운 부분을 알려 주세요.',
+    kind: RecruitmentKind.FEATURE,
+    capacity: 10,
+    startInDays: -25,
+    endInDays: -15,
+    analysisReviewedDaysAgo: 9,
+    devices: [{ os: Os.ANDROID, scope: 'ALL' }],
+    applicants: [12, 14, 16, 4, 6, 8],
+    ip: '203.0.113.18',
+  },
+  {
+    title: '로그인 화면 테스트',
+    description: '간편 로그인 화면을 써 보는 짧은 테스트입니다. 아쉽게도 마감까지 피드백이 들어오지 않았어요.',
+    kind: RecruitmentKind.FEATURE,
+    capacity: 5,
+    startInDays: -10,
+    endInDays: -5,
+    devices: [
+      { os: Os.ANDROID, scope: 'ALL' },
+      { os: Os.IOS, scope: 'ALL' },
+    ],
+    applicants: [18, 19],
+    ip: '203.0.113.19',
+  },
+  {
+    title: '테마 설정 기능 테스트',
+    description: '앱 색상 테마를 고르는 기능 테스트입니다. 기획이 바뀌어 관리자가 삭제했어요.',
+    kind: RecruitmentKind.FEATURE,
+    capacity: 10,
+    startInDays: 10,
+    endInDays: 24,
+    deletedDaysAgo: 2,
+    devices: [{ os: Os.IOS, scope: 'ALL' }],
+    applicants: [1, 3],
+    ip: '203.0.113.20',
   },
 ];
 
@@ -169,10 +239,20 @@ export const DEMO_FEEDBACKS: DemoFeedback[] = [
   { recruitmentIndex: 4, tester: 5, type: I, title: '오늘로 돌아가는 버튼이 필요해요', content: '몇 달 뒤로 넘기면 오늘로 돌아오기가 어려워요.', daysAgo: 1 },
   { recruitmentIndex: 4, tester: 7, type: I, title: '주 시작 요일을 고를 수 있으면 좋겠어요', content: '월요일부터 시작하는 달력이 더 익숙해요.', daysAgo: 0 },
   { recruitmentIndex: 4, tester: 9, type: P, title: '화면 전환 애니메이션이 부드러워요', content: '월간과 주간을 오갈 때 끊기지 않고 자연스러워요.', daysAgo: 0 },
+  // 6: 일정 검색 (2건, 나머지 신청자는 아직 피드백을 쓰지 않았다)
+  { recruitmentIndex: 6, tester: 13, type: B, title: '띄어쓰기가 다르면 검색이 안 돼요', content: '"팀 회의"로 저장한 일정을 "팀회의"로 검색하면 아무것도 나오지 않아요.', daysAgo: 1 },
+  { recruitmentIndex: 6, tester: 15, type: P, title: '최근 검색어가 남아서 편해요', content: '자주 찾는 일정을 다시 입력하지 않아도 돼서 좋아요.', daysAgo: 0 },
+  // 7: 온보딩 화면 개선 (4건, 신청자 2명은 피드백 없이 끝났다)
+  { recruitmentIndex: 7, tester: 12, type: I, title: '건너뛰기 버튼이 너무 작아요', content: '오른쪽 위 건너뛰기 글씨가 작아서 몇 번 눌러야 했어요.', daysAgo: 3 },
+  { recruitmentIndex: 7, tester: 14, type: P, title: '그림이 귀여워요', content: '안내 화면 그림이 앱 분위기와 잘 어울려요.', daysAgo: 2 },
+  { recruitmentIndex: 7, tester: 16, type: B, title: '화면을 돌리면 처음으로 돌아가요', content: '세 번째 안내에서 가로로 돌렸더니 첫 화면부터 다시 나왔어요.', daysAgo: 1 },
+  { recruitmentIndex: 7, tester: 4, type: I, title: '알림 권한 요청 이유를 먼저 알려 주세요', content: '안내 중간에 갑자기 알림 권한 창이 떠서 당황했어요.', daysAgo: 0 },
 ];
 
+/** recruitmentIndex: DEMO_RECRUITMENTS 의 순서. 분석은 피드백 마감 뒤에 돌린 것으로 만든다. */
 export const DEMO_ANALYSES = [
   {
+    recruitmentIndex: 1,
     versionNo: 1,
     daysAgo: 2,
     feedbackCount: 10,
@@ -184,6 +264,7 @@ export const DEMO_ANALYSES = [
     },
   },
   {
+    recruitmentIndex: 1,
     versionNo: 2,
     daysAgo: 1,
     feedbackCount: 14,
@@ -201,6 +282,18 @@ export const DEMO_ANALYSES = [
       ],
       positiveOpinions: ['알림 문구가 친절해요.', '다시 알림(미루기) 기능이 출근 준비에 도움이 돼요.', '시간 고르는 화면이 한 손으로 쓰기 편해요.'],
       priorityChecks: ['방해 금지 시간에도 알림이 오는 문제 (사용자 불편이 큼)', '알림 지연 원인 확인 (절전 모드, 시간대)', '알림 탭 시 일정 상세로 이동하도록 수정'],
+    },
+  },
+  {
+    recruitmentIndex: 7,
+    versionNo: 1,
+    daysAgo: 10,
+    feedbackCount: 4,
+    result: {
+      recurringIssues: ['화면을 가로로 돌리면 안내가 처음부터 다시 시작된다는 보고가 있어요.'],
+      improvementRequests: ['건너뛰기 버튼을 더 크게 만들어 달라는 요청이 있어요.', '알림 권한을 묻기 전에 이유를 먼저 설명해 달라는 의견이 있어요.'],
+      positiveOpinions: ['안내 화면 그림이 앱 분위기와 잘 어울린다는 평가가 있어요.'],
+      priorityChecks: ['화면 회전 시 안내 진행 상태 유지', '알림 권한 요청 시점 조정'],
     },
   },
 ];

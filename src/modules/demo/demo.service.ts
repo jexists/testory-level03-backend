@@ -131,25 +131,27 @@ export class DemoService {
           endAt,
           feedbackDueAt: defaultFeedbackDueAt(endAt),
           testStartedAt: d.filledDaysAgo != null ? new Date(now - d.filledDaysAgo * DAY) : null,
-          analysisReviewedAt: null,
+          analysisReviewedAt: d.analysisReviewedDaysAgo != null ? new Date(now - d.analysisReviewedDaysAgo * DAY) : null,
           isClosed: d.isClosed ?? false,
           createdBy: admin.id,
           createdIp: d.ip,
           updatedIp: d.ip,
-          deletedAt: null,
-          deletedIp: null,
+          deletedAt: d.deletedDaysAgo != null ? new Date(now - d.deletedDaysAgo * DAY) : null,
+          deletedIp: d.deletedDaysAgo != null ? d.ip : null,
         }),
       );
       recruitments.push(r);
-      await m.getRepository(RecruitmentDevice).insert(
-        d.devices.map((c) => ({
-          recruitmentId: r.id,
-          os: c.os,
-          scope: c.scope as DeviceScope,
-          deviceModelId: c.scope === 'MODEL' ? byName.get(c.model!)!.id : null,
-          deviceCapacity: null,
-        })),
-      );
+      if (d.devices.length > 0) {
+        await m.getRepository(RecruitmentDevice).insert(
+          d.devices.map((c) => ({
+            recruitmentId: r.id,
+            os: c.os,
+            scope: c.scope as DeviceScope,
+            deviceModelId: c.scope === 'MODEL' ? byName.get(c.model!)!.id : null,
+            deviceCapacity: null,
+          })),
+        );
+      }
 
       const startedAgo = Math.max(-d.startInDays, d.filledDaysAgo ?? 0, 0) + 1;
       const apps = [
@@ -188,10 +190,9 @@ export class DemoService {
       }),
     );
 
-    const alarm = recruitments[1];
     await m.getRepository(AiAnalysis).insert(
       DEMO_ANALYSES.map((a) => ({
-        recruitmentId: alarm.id,
+        recruitmentId: recruitments[a.recruitmentIndex].id,
         versionNo: a.versionNo,
         result: a.result,
         feedbackCount: a.feedbackCount,
