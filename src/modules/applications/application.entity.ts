@@ -22,9 +22,9 @@ export class Application {
   @JoinColumn({ name: 'user_id' })
   user?: User;
 
-  /** 신청 당시 기기 OS (복사본) */
-  @Column({ name: 'device_type', type: 'varchar', length: 10 })
-  deviceType: Os;
+  /** 신청 당시 기기 OS (복사본). ANDROID/IOS 또는 직접 입력한 OS 이름 */
+  @Column({ name: 'device_type', type: 'varchar', length: 30 })
+  deviceType: string;
 
   /** 신청 당시 기기 모델 이름 (복사본) */
   @Column({ name: 'device_model', type: 'varchar', length: 60 })

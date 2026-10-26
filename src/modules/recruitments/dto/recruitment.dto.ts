@@ -1,6 +1,5 @@
 import { Transform, Type } from 'class-transformer';
 import {
-  ArrayMinSize,
   IsArray,
   IsDate,
   IsEnum,
@@ -64,8 +63,8 @@ export class RecruitmentBodyDto {
   @IsDate({ message: '종료일을 입력해 주세요.' })
   endAt: Date;
 
+  /** 빈 배열이면 모든 기기를 받는다. */
   @IsArray({ message: MSG.DEVICE_CONDITION_MIN })
-  @ArrayMinSize(1, { message: MSG.DEVICE_CONDITION_MIN })
   @ValidateNested({ each: true })
   @Type(() => DeviceConditionDto)
   devices: DeviceConditionDto[];

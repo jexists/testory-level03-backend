@@ -1,3 +1,4 @@
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestApp, insertAdmin, login, modelId, PASSWORD, recruitmentBody, signup, type TestCtx } from './helpers';
 
@@ -92,6 +93,30 @@ describe('회원가입·로그인·권한 (R7, R15)', () => {
     expect(ok.status).toBe(200);
     expect(ok.body.deviceModel.modelName).toBe('아이폰 15');
   });
+
+  it('목록에 없는 기기는 OS·모델 이름을 직접 입력하고, 입력한 이름만 저장한다', async () => {
+    const base = { password: PASSWORD, nickname: 'other' };
+    const noName = await ctx.http().post('/auth/signup').send({ ...base, email: 'other0@test.dev', deviceType: 'OTHER', deviceModelName: '폰' });
+    expect(noName.status).toBe(400);
+    expect(noName.body.details).toMatchObject({ deviceOsName: 'OS 이름을 입력해 주세요.' });
+
+    const os = await ctx
+      .http()
+      .post('/auth/signup')
+      .send({ ...base, email: 'other1@test.dev', deviceType: 'OTHER', deviceOsName: ' HarmonyOS ', deviceModelName: 'Mate 60' });
+    expect(os.status).toBe(201);
+    expect(os.body.user).toMatchObject({ deviceType: null, deviceOsName: 'HarmonyOS', deviceModel: { id: null, modelName: 'Mate 60' } });
+
+    const model = await ctx.http().post('/auth/signup').send({ ...base, email: 'other2@test.dev', deviceType: 'ANDROID', deviceModelName: '갤럭시 Z 폴드 6' });
+    expect(model.status).toBe(201);
+    expect(model.body.user).toMatchObject({ deviceType: 'ANDROID', deviceOsName: null, deviceModel: { id: null, modelName: '갤럭시 Z 폴드 6' } });
+
+    const both = await ctx
+      .http()
+      .post('/auth/signup')
+      .send({ ...base, email: 'other3@test.dev', deviceType: 'OTHER', deviceOsName: 'X', deviceModelId: await modelId(ctx, '픽셀 8') });
+    expect(both.status).toBe(400);
+  });
 });
 
 describe('모집글 등록·수정·삭제 (R1, R8, R10, R11, R12)', () => {
@@ -122,8 +147,14 @@ describe('모집글 등록·수정·삭제 (R1, R8, R10, R11, R12)', () => {
       .post('/admin/recruitments')
       .send(recruitmentBody({ startAt: new Date(Date.now() + 5 * DAY).toISOString(), endAt: new Date(Date.now() + 2 * DAY).toISOString() }));
     expect(early.body.message).toBe('종료일은 시작일보다 늦어야 해요.');
-    const none = await admin.post('/admin/recruitments').send(recruitmentBody({ devices: [] }));
-    expect(none.body.message).toBe('기기 조건을 하나 이상 선택해 주세요.');
+  });
+
+  it('기기 조건이 없으면 모든 기기를 받는다', async () => {
+    const any = await admin.post('/admin/recruitments').send(recruitmentBody({ title: '아무 기기 모집', devices: [] }));
+    expect(any.status).toBe(201);
+    expect(any.body.devices).toEqual([]);
+    const androidList = (await ctx.http().get(`/recruitments?os=ANDROID&q=${encodeURIComponent('아무 기기 모집')}`)).body.items;
+    expect(androidList.map((i: { id: number }) => i.id)).toContain(any.body.id);
   });
 
   it('Android 전체 + Android 모델은 거절, Android 전체 + iOS 모델은 허용 (R8)', async () => {
@@ -216,6 +247,26 @@ describe('신청·취소 (R1~R6, R15)', () => {
 
     const only15 = await createRecruitment({ devices: [{ os: 'IOS', scope: 'MODEL', deviceModelId: await modelId(ctx, '아이폰 15') }] });
     expect((await agent.post(`/recruitments/${only15.id}/applications`)).body.message).toBe('이 모집은 아이폰 15 기기만 받아요.');
+  });
+
+  it('직접 입력한 기기: 모델만 입력했으면 같은 OS 전체 조건, OS 를 입력했으면 모든 기기 모집에만 신청된다 (R5)', async () => {
+    const androidAll = await createRecruitment({ devices: [{ os: 'ANDROID', scope: 'ALL' }] });
+    const pixelOnly = await createRecruitment({ devices: [{ os: 'ANDROID', scope: 'MODEL', deviceModelId: await modelId(ctx, '픽셀 8') }] });
+    const anyDevice = await createRecruitment({ devices: [] });
+
+    const fold = request.agent(ctx.app.getHttpServer());
+    await fold.post('/auth/signup').send({ email: 'fold@test.dev', password: PASSWORD, nickname: 'fold', deviceType: 'ANDROID', deviceModelName: '폴드 6' });
+    expect((await fold.post(`/recruitments/${androidAll.id}/applications`)).status).toBe(201);
+    expect((await fold.post(`/recruitments/${pixelOnly.id}/applications`)).status).toBe(400);
+
+    const harmony = request.agent(ctx.app.getHttpServer());
+    await harmony
+      .post('/auth/signup')
+      .send({ email: 'harmony@test.dev', password: PASSWORD, nickname: 'harmony', deviceType: 'OTHER', deviceOsName: 'HarmonyOS', deviceModelName: 'Mate 60' });
+    expect((await harmony.post(`/recruitments/${androidAll.id}/applications`)).body.message).toBe('이 모집은 Android만 받아요.');
+    const applied = await harmony.post(`/recruitments/${anyDevice.id}/applications`);
+    expect(applied.status).toBe(201);
+    expect(applied.body).toMatchObject({ deviceType: 'HarmonyOS', deviceModel: 'Mate 60' });
   });
 
   it('관리자는 신청할 수 없다', async () => {

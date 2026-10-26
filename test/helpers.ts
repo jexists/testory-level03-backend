@@ -10,6 +10,7 @@ import { DataSource } from 'typeorm';
 import { configureApp } from '../src/app.setup';
 import { buildDataSourceOptions } from '../src/database/data-source';
 import { InitSchema1761400000000 } from '../src/database/migrations/1761400000000-InitSchema';
+import { DeviceOther1761500000000 } from '../src/database/migrations/1761500000000-DeviceOther';
 
 export const PASSWORD = 'test-password-1234';
 const DAY = 86_400_000;
@@ -45,7 +46,7 @@ export async function createTestApp(configure?: (b: ReturnType<typeof Test.creat
 
   const migrator = new DataSource({
     ...buildDataSourceOptions({ DATABASE_URL: dbUrl, DATABASE_SCHEMA: schema }),
-    migrations: [InitSchema1761400000000],
+    migrations: [InitSchema1761400000000, DeviceOther1761500000000],
   });
   await migrator.initialize();
   await migrator.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);

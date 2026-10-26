@@ -40,9 +40,9 @@ export class ApplicationsService {
         }
 
         // R5: 내 기기 정보가 비어 있으면 신청 불가, 조건에 맞아야 신청 가능
-        if (!user.deviceType || !user.deviceModelId || !user.deviceModel) {
-          throw badRequest('DEVICE_REQUIRED', MSG.DEVICE_REQUIRED);
-        }
+        const osText = user.deviceType ?? user.deviceOsName;
+        const modelText = user.deviceModel?.modelName ?? user.deviceModelName;
+        if (!osText || !modelText) throw badRequest('DEVICE_REQUIRED', MSG.DEVICE_REQUIRED);
         const rows = await m
           .getRepository(RecruitmentDevice)
           .createQueryBuilder('d')
@@ -68,8 +68,8 @@ export class ApplicationsService {
           repo.create({
             recruitmentId,
             userId: user.id,
-            deviceType: user.deviceType,
-            deviceModel: user.deviceModel.modelName,
+            deviceType: osText,
+            deviceModel: modelText,
             status: ApplicationStatus.APPLIED,
             cancelledAt: null,
           }),

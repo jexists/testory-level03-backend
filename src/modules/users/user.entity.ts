@@ -25,6 +25,14 @@ export class User {
   @Column({ name: 'device_model_id', type: 'int', nullable: true })
   deviceModelId: number | null;
 
+  /** OS 를 목록에서 고르지 않고 직접 입력했을 때의 이름 ("기타") */
+  @Column({ name: 'device_os_name', type: 'varchar', length: 30, nullable: true })
+  deviceOsName: string | null;
+
+  /** 모델을 목록에서 고르지 않고 직접 입력했을 때의 이름 ("기타") */
+  @Column({ name: 'device_model_name', type: 'varchar', length: 60, nullable: true })
+  deviceModelName: string | null;
+
   @ManyToOne(() => DeviceModel, { nullable: true })
   @JoinColumn({ name: 'device_model_id' })
   deviceModel?: DeviceModel | null;

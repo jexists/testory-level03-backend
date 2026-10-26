@@ -24,8 +24,8 @@ const msgOf = (fn: () => void) => {
 };
 
 describe('validateDeviceConditions (R8)', () => {
-  it('조건이 하나도 없으면 거절한다', () => {
-    expect(msgOf(() => validateDeviceConditions([], models))).toBe('기기 조건을 하나 이상 선택해 주세요.');
+  it('조건이 하나도 없으면 모든 기기를 받는 것으로 허용한다', () => {
+    expect(() => validateDeviceConditions([], models)).not.toThrow();
   });
 
   it('Android 전체 + iOS 특정 모델은 허용한다', () => {
@@ -94,6 +94,16 @@ describe('deviceMatches / describeAllowed (R5)', () => {
     expect(deviceMatches({ os: Os.ANDROID, modelId: 1 }, conds)).toBe(true);
     expect(deviceMatches({ os: Os.IOS, modelId: 2 }, conds)).toBe(true);
     expect(deviceMatches({ os: Os.IOS, modelId: 7 }, conds)).toBe(false);
+  });
+
+  it('조건이 없으면(모든 기기) 직접 입력한 기기도 맞는다', () => {
+    expect(deviceMatches({ os: null, modelId: null }, [])).toBe(true);
+  });
+
+  it('직접 입력한 모델은 같은 OS 전체 조건에만 맞고, 직접 입력한 OS 는 목록 조건에 맞지 않는다', () => {
+    expect(deviceMatches({ os: Os.ANDROID, modelId: null }, conds)).toBe(true);
+    expect(deviceMatches({ os: Os.IOS, modelId: null }, conds)).toBe(false);
+    expect(deviceMatches({ os: null, modelId: null }, conds)).toBe(false);
   });
 
   it('거절 문구를 만든다', () => {

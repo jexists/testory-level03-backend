@@ -1,13 +1,4 @@
-import { IsEnum, IsInt } from 'class-validator';
-import { Os } from '../../../common/enums';
-import { MSG } from '../../../common/messages';
+import { DeviceInputDto } from './device-input.dto';
 
-export class UpdateDeviceDto {
-  /** 내 기기의 OS */
-  @IsEnum(Os, { message: MSG.DEVICE_SELECT })
-  deviceType: Os;
-
-  /** 모델 목록(device_models)에서 고른 모델의 id */
-  @IsInt({ message: MSG.DEVICE_PICK_MODEL })
-  deviceModelId: number;
-}
+/** 마이페이지에서 내 기기를 고친다. 규칙은 가입과 같다. */
+export class UpdateDeviceDto extends DeviceInputDto {}

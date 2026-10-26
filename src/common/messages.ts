@@ -11,6 +11,8 @@ export const MSG = {
   DEVICE_PICK_MODEL: '모델 목록에서 골라 주세요.',
   DEVICE_OS_MISMATCH: '선택한 모델이 내 OS와 맞지 않아요.',
   DEVICE_SELECT: '내 기기를 선택해 주세요.',
+  DEVICE_OS_NAME_REQUIRED: 'OS 이름을 입력해 주세요.',
+  DEVICE_MODEL_NAME_REQUIRED: '기기 모델명을 입력해 주세요.',
   DEVICE_CONDITION_MIN: '기기 조건을 하나 이상 선택해 주세요.',
   DEVICE_CONDITION_ALL_OVERLAP: (os: string) => `${os} 전체를 허용했으니 ${os} 모델은 따로 고를 필요가 없어요.`,
   DEVICE_CONDITION_DUPLICATE: '같은 기기 조건을 두 번 넣을 수 없어요.',

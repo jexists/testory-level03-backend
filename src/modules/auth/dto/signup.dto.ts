@@ -1,11 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsEnum, IsInt, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
-import { Os } from '../../../common/enums';
+import { IsEmail, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
 import { MSG } from '../../../common/messages';
+import { DeviceInputDto } from '../../users/dto/device-input.dto';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
-export class SignupDto {
+/** 내 기기 항목(deviceType, deviceOsName, deviceModelId, deviceModelName)은 DeviceInputDto 에 있다. */
+export class SignupDto extends DeviceInputDto {
   @Transform(trim)
   @IsEmail({}, { message: MSG.EMAIL_FORMAT })
   @MaxLength(255, { message: MSG.EMAIL_FORMAT })
@@ -21,12 +22,4 @@ export class SignupDto {
   @IsNotEmpty({ message: MSG.NICKNAME_REQUIRED })
   @MaxLength(30, { message: '닉네임은 30자 이하로 만들어 주세요.' })
   nickname: string;
-
-  /** 내 기기의 OS (브라우저가 알려 주는 값으로 미리 골라 둘 수 있다) */
-  @IsEnum(Os, { message: MSG.DEVICE_SELECT })
-  deviceType: Os;
-
-  /** 모델 목록에서 고른 모델의 id */
-  @IsInt({ message: MSG.DEVICE_SELECT })
-  deviceModelId: number;
 }

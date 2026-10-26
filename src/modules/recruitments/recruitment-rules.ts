@@ -17,7 +17,7 @@ export interface KnownModel {
 
 /**
  * R8: 모집글의 기기 조건 검사.
- * - 최소 1개, 같은 조건 중복 금지
+ * - 조건이 없으면 "모든 기기"를 받는다. 같은 조건 중복 금지
  * - 한 OS 를 "전체"로 허용했다면 그 OS 의 특정 모델 조건은 함께 둘 수 없다
  * - 특정 모델 조건은 모델 목록에 있는 모델이어야 하고 OS 가 같아야 한다
  * keepModelIds 에 있는 비활성 모델은 (기존 조건 유지용으로) 허용한다.
@@ -27,8 +27,6 @@ export function validateDeviceConditions(
   models: Map<number, KnownModel>,
   keepModelIds: Set<number> = new Set(),
 ): void {
-  if (!conditions || conditions.length === 0) throw badRequest('DEVICE_CONDITION_MIN', MSG.DEVICE_CONDITION_MIN);
-
   const seen = new Set<string>();
   const allOs = new Set<Os>();
   for (const c of conditions) {
@@ -59,8 +57,12 @@ export interface StoredCondition {
   modelName?: string | null;
 }
 
-/** R5: 내 OS 가 ALL 조건에 있거나 내 모델이 MODEL 조건에 있어야 한다. */
-export function deviceMatches(device: { os: Os; modelId: number }, conditions: StoredCondition[]): boolean {
+/**
+ * R5: 조건이 없으면(모든 기기) 누구나, 아니면 내 OS 가 ALL 조건에 있거나 내 모델이 MODEL 조건에 있어야 한다.
+ * 직접 입력한 OS·모델("기타")은 null 이라 목록 기준 조건에는 맞지 않는다.
+ */
+export function deviceMatches(device: { os: Os | null; modelId: number | null }, conditions: StoredCondition[]): boolean {
+  if (conditions.length === 0) return true;
   return conditions.some((c) =>
     c.scope === DeviceScope.ALL ? c.os === device.os : c.deviceModelId === device.modelId,
   );

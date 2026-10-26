@@ -27,7 +27,7 @@ export class AuthService {
   async signup(dto: SignupDto) {
     const email = dto.email.toLowerCase();
     if (await this.users.exists({ where: { email } })) throw conflict('EMAIL_TAKEN', MSG.EMAIL_TAKEN);
-    await this.usersService.validateDevice(dto.deviceType, dto.deviceModelId);
+    const device = await this.usersService.toDeviceColumns(dto);
 
     try {
       const saved = await this.users.save(
@@ -36,8 +36,7 @@ export class AuthService {
           nickname: dto.nickname,
           passwordHash: await bcrypt.hash(dto.password, BCRYPT_COST),
           role: Role.USER,
-          deviceType: dto.deviceType,
-          deviceModelId: dto.deviceModelId,
+          ...device,
         }),
       );
       const user = await this.users.findOneOrFail({ where: { id: saved.id }, relations: { deviceModel: true } });

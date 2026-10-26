@@ -105,13 +105,15 @@ export class RecruitmentsService {
     qb.addSelect(`(${participants})::int`, 'participants').addSelect(`(${feedbacks})::int`, 'feedback_count');
 
     if (q.os) {
+      // 그 OS 조건이 있거나, 조건이 하나도 없는(모든 기기) 모집글
       const exists = qb
         .subQuery()
         .select('1')
         .from(RecruitmentDevice, 'd')
         .where('d.recruitmentId = r.id AND d.os = :os')
         .getQuery();
-      qb.andWhere(`EXISTS ${exists}`, { os: q.os });
+      const anyDevice = qb.subQuery().select('1').from(RecruitmentDevice, 'd2').where('d2.recruitmentId = r.id').getQuery();
+      qb.andWhere(`(EXISTS ${exists} OR NOT EXISTS ${anyDevice})`, { os: q.os });
     }
     if (q.q?.trim()) qb.andWhere('r.title ILIKE :q', { q: `%${q.q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%` });
     if (q.status === StatusFilter.OPEN) {

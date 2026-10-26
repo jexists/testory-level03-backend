@@ -21,7 +21,7 @@ export class UsersController {
   @Patch('me/device')
   @ApiCookieAuth()
   async updateDevice(@CurrentUser() user: User, @Body() dto: UpdateDeviceDto) {
-    const updated = await this.users.updateDevice(user.id, dto.deviceType, dto.deviceModelId);
+    const updated = await this.users.updateDevice(user.id, dto);
     return toUserView(updated);
   }
 
